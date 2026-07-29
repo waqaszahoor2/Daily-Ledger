@@ -164,19 +164,30 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
             {/* Category */}
             <div>
               <label className="block text-xs font-medium text-foreground mb-1.5">Category *</label>
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+              <div
+                className={`grid gap-2 ${
+                  categories.length <= 2
+                    ? 'grid-cols-2'
+                    : categories.length === 3
+                    ? 'grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-4'
+                }`}
+              >
                 {categories.map((cat) => (
                   <button
                     key={cat.id}
+                    type="button"
                     onClick={() => setCategoryId(cat.id)}
-                    className={`flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all text-xs ${
+                    className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl transition-all ${
                       categoryId === cat.id
-                        ? 'bg-primary/10 text-primary ring-2 ring-primary/20'
+                        ? 'bg-primary/10 text-primary ring-2 ring-primary/20 font-semibold'
                         : 'bg-surface-hover text-muted hover:bg-surface'
                     }`}
                   >
-                    <span className="text-lg">{cat.icon}</span>
-                    <span className="truncate w-full text-center">{cat.name}</span>
+                    <span className="text-xl">{cat.icon}</span>
+                    <span className="text-xs font-medium text-center leading-tight break-words w-full">
+                      {cat.name}
+                    </span>
                   </button>
                 ))}
               </div>
