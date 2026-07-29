@@ -80,6 +80,13 @@ export default function DashboardPage() {
             Live
           </div>
 
+          {/* Encrypted Local Storage Badge */}
+          <span className="badge-encrypted">
+            <Lock className="w-3.5 h-3.5" /> Encrypted Local Storage
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
           {/* Live Device Timestamp */}
           {currentTime && (
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-foreground bg-surface-hover/80 border border-border">
@@ -88,28 +95,23 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Encrypted Local Storage Badge */}
-          <span className="badge-encrypted">
-            <Lock className="w-3.5 h-3.5" /> Encrypted Local Storage
-          </span>
+          {/* Dark/Light Mode Switcher */}
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all active:scale-95 border border-primary/20 cursor-pointer"
+            title="Toggle Light/Dark Theme"
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="w-4 h-4 text-amber-400" /> Light Mode
+              </>
+            ) : (
+              <>
+                <Moon className="w-4 h-4 text-indigo-400" /> Dark Mode
+              </>
+            )}
+          </button>
         </div>
-
-        {/* Dark/Light Mode Switcher */}
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all active:scale-95 border border-primary/20 cursor-pointer"
-          title="Toggle Light/Dark Theme"
-        >
-          {theme === 'dark' ? (
-            <>
-              <Sun className="w-4 h-4 text-amber-400" /> Light Mode
-            </>
-          ) : (
-            <>
-              <Moon className="w-4 h-4 text-indigo-400" /> Dark Mode
-            </>
-          )}
-        </button>
       </motion.div>
 
       {/* Balance Card */}
