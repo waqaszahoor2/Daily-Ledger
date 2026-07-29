@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Minus, ArrowLeftRight, Users } from 'lucide-react';
+import { X, Plus, Minus, ArrowLeftRight, Users, Calculator, Check } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useTransactions } from '@/hooks/useTransactions';
 import { getCategoriesByType } from '@/config/categories';
@@ -31,6 +31,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
 
   const [type, setType] = useState<TransactionType>(initialType);
   const [amount, setAmount] = useState(editingTx ? String(editingTx.amount / 100) : '');
+  const [deductAmount, setDeductAmount] = useState('');
   const [categoryId, setCategoryId] = useState(initialCategory);
   const [personName, setPersonName] = useState(editingTx?.personName || modalInitialData?.personName || '');
   const [notes, setNotes] = useState(editingTx?.notes || '');
@@ -39,6 +40,19 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
   const [saving, setSaving] = useState(false);
 
   const categories = getCategoriesByType(type);
+
+  const numAmount = parseFloat(amount) || 0;
+  const numDeduct = parseFloat(deductAmount) || 0;
+  const newAmount = Math.max(0, numAmount - numDeduct);
+
+  const handleApplyDeduction = () => {
+    if (numDeduct > 0 && numAmount > 0) {
+      const updated = Math.max(0, numAmount - numDeduct);
+      setAmount(updated.toFixed(2));
+      setDeductAmount('');
+      toast.success(`Amount updated to PKR ${updated.toFixed(2)}`);
+    }
+  };
 
   const handleTypeChange = (newType: TransactionType) => {
     setType(newType);
@@ -144,8 +158,8 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
             </div>
 
             {/* Amount */}
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">Amount *</label>
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-foreground">Amount *</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-muted">PKR</span>
                 <input
@@ -158,6 +172,89 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                   min="0"
                   autoFocus
                 />
+              </div>
+
+              {/* Partial Payment / Deduction Calculator */}
+              <div className="p-3 rounded-2xl bg-surface-hover/60 border border-border/60 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <span className="text-[11px] font-semibold text-muted flex items-center gap-1.5">
+                    <Calculator className="w-3.5 h-3.5 text-primary" /> Partial Payment / Deduct Amount
+                  </span>
+                  {numAmount > 0 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setDeductAmount((numAmount / 2).toFixed(2))}
+                        className="px-2 py-0.5 text-[10px] font-semibold rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition cursor-pointer"
+                        title="Deduct 50% half payment"
+                      >
+                        ½ Half (50%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeductAmount((numAmount * 0.25).toFixed(2))}
+                        className="px-2 py-0.5 text-[10px] font-semibold rounded-lg bg-surface-hover text-muted hover:bg-surface transition cursor-pointer"
+                        title="Deduct 25%"
+                      >
+                        25%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeductAmount((numAmount * 0.75).toFixed(2))}
+                        className="px-2 py-0.5 text-[10px] font-semibold rounded-lg bg-surface-hover text-muted hover:bg-surface transition cursor-pointer"
+                        title="Deduct 75%"
+                      >
+                        75%
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted">Deduct PKR</span>
+                  <input
+                    type="number"
+                    value={deductAmount}
+                    onChange={(e) => setDeductAmount(e.target.value)}
+                    placeholder="Enter payment or deduction amount..."
+                    className="input-field pl-24 text-sm font-medium py-2"
+                    step="0.01"
+                    min="0"
+                  />
+                  {deductAmount && (
+                    <button
+                      type="button"
+                      onClick={() => setDeductAmount('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-foreground cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {numDeduct > 0 && numAmount > 0 && (
+                  <div className="p-3 rounded-xl bg-card border border-primary/20 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted">Original Amount:</span>
+                      <span className="font-semibold text-foreground">PKR {numAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted">Payment / Deducted:</span>
+                      <span className="font-semibold text-danger">− PKR {numDeduct.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1.5 border-t border-border text-xs">
+                      <span className="font-semibold text-primary">New Remaining Amount:</span>
+                      <span className="font-bold text-primary text-sm">PKR {newAmount.toFixed(2)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyDeduction}
+                      className="w-full mt-1 py-2 px-3 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Apply New Amount (PKR {newAmount.toFixed(2)})
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
