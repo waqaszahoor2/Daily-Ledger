@@ -5,8 +5,9 @@ import { motion } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Eye, EyeOff,
   Plus, Minus, ArrowLeftRight, Users, ChevronRight, Search, Calendar,
-  WifiOff, Lock
+  Lock, Clock, Sun, Moon
 } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useDebts } from '@/hooks/useDebts';
 import { formatMoney } from '@/lib/utils/money';
@@ -25,13 +26,37 @@ const fadeUp = {
 export default function DashboardPage() {
   const { transactions, metrics, loading } = useTransactions();
   const { personBalances } = useDebts();
+  const { theme, setTheme } = useTheme();
   const settings = useAppStore((s) => s.settings);
   const setShowTransactionModal = useAppStore((s) => s.setShowTransactionModal);
   const showTransactionModal = useAppStore((s) => s.showTransactionModal);
   const setModalInitialData = useAppStore((s) => s.setModalInitialData);
   const [showBalance, setShowBalance] = useState(true);
   const [defaultType, setDefaultType] = useState<TransactionType>('expense');
+  const [currentTime, setCurrentTime] = useState<string>('');
   const currency = settings.currency || 'PKR';
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        }) + ' • ' + now.toLocaleDateString(undefined, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        })
+      );
+    };
+
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const recentTxns = transactions.slice(0, 5);
   const pendingDebts = personBalances.filter((p) => p.netBalance !== 0).slice(0, 3);
@@ -43,10 +68,48 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container space-y-6">
-      {/* Status Badges */}
-      <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0} className="flex items-center gap-3 flex-wrap">
-        <span className="badge-offline"><WifiOff className="w-3.5 h-3.5" /> Offline Mode</span>
-        <span className="badge-encrypted"><Lock className="w-3.5 h-3.5" /> Encrypted Local Storage</span>
+      {/* Live Status & Theme Control Bar */}
+      <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0} className="flex items-center justify-between gap-3 flex-wrap bg-card/60 backdrop-blur-md border border-border p-3.5 rounded-2xl shadow-sm">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Live Pulsing Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/20">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            Live
+          </div>
+
+          {/* Live Device Timestamp */}
+          {currentTime && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-foreground bg-surface-hover/80 border border-border">
+              <Clock className="w-3.5 h-3.5 text-primary" />
+              <span>{currentTime}</span>
+            </div>
+          )}
+
+          {/* Encrypted Local Storage Badge */}
+          <span className="badge-encrypted">
+            <Lock className="w-3.5 h-3.5" /> Encrypted Local Storage
+          </span>
+        </div>
+
+        {/* Dark/Light Mode Switcher */}
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all active:scale-95 border border-primary/20 cursor-pointer"
+          title="Toggle Light/Dark Theme"
+        >
+          {theme === 'dark' ? (
+            <>
+              <Sun className="w-4 h-4 text-amber-400" /> Light Mode
+            </>
+          ) : (
+            <>
+              <Moon className="w-4 h-4 text-indigo-400" /> Dark Mode
+            </>
+          )}
+        </button>
       </motion.div>
 
       {/* Balance Card */}
