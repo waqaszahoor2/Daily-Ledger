@@ -36,7 +36,8 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
 
   const [type, setType] = useState<TransactionType>(initialType);
   const [amount, setAmount] = useState(editingTx ? String(editingTx.amount / 100) : '');
-  const [deductAmount, setDeductAmount] = useState('');
+  const [calcMode, setCalcMode] = useState<'subtract' | 'add'>('subtract');
+  const [calcAmount, setCalcAmount] = useState('');
   const [categoryId, setCategoryId] = useState(initialCategory);
   const [personName, setPersonName] = useState(editingTx?.personName || modalInitialData?.personName || '');
   const [notes, setNotes] = useState(editingTx?.notes || '');
@@ -47,17 +48,22 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
   const categories = getCategoriesByType(type);
 
   const numAmount = parseFloat(amount) || 0;
-  const numDeduct = parseFloat(deductAmount) || 0;
-  const newAmount = Math.max(0, numAmount - numDeduct);
-  const pctDeducted = numAmount > 0 ? Math.min(100, Math.round((numDeduct / numAmount) * 100)) : 0;
+  const numCalc = parseFloat(calcAmount) || 0;
+
+  const calculatedTotal = calcMode === 'subtract'
+    ? Math.max(0, numAmount - numCalc)
+    : numAmount + numCalc;
+
+  const pctDeducted = (calcMode === 'subtract' && numAmount > 0)
+    ? Math.min(100, Math.round((numCalc / numAmount) * 100))
+    : 0;
   const pctRemaining = 100 - pctDeducted;
 
-  const handleApplyDeduction = () => {
-    if (numDeduct > 0 && numAmount > 0) {
-      const updated = Math.max(0, numAmount - numDeduct);
-      setAmount(updated.toFixed(2));
-      setDeductAmount('');
-      toast.success(`Updated total amount to PKR ${updated.toFixed(2)}`);
+  const handleApplyCalc = () => {
+    if (numCalc > 0 && numAmount >= 0) {
+      setAmount(calculatedTotal.toFixed(2));
+      setCalcAmount('');
+      toast.success(`Updated total amount to PKR ${calculatedTotal.toFixed(2)}`);
     }
   };
 
@@ -215,54 +221,110 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                 />
               </div>
 
-              {/* Professional Partial Payment / Deduction Engine */}
+              {/* Professional Plus (+) & Minus (-) Adjustment Engine */}
               <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-sm space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Calculator className="w-4 h-4 text-primary" /> Partial Payment / Deduction Calculator
+                    <Calculator className="w-4 h-4 text-primary" /> Amount Adjustment & Repayment Calculator
                   </span>
-                  {numAmount > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setDeductAmount((numAmount / 2).toFixed(2))}
-                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition cursor-pointer"
-                      >
-                        ½ Half (50%)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeductAmount((numAmount * 0.25).toFixed(2))}
-                        className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-surface-hover text-muted hover:bg-surface border border-border/60 transition cursor-pointer"
-                      >
-                        25%
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeductAmount((numAmount * 0.75).toFixed(2))}
-                        className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-surface-hover text-muted hover:bg-surface border border-border/60 transition cursor-pointer"
-                      >
-                        75%
-                      </button>
-                    </div>
-                  )}
+
+                  {/* Mode Switcher: Minus (-) vs Plus (+) */}
+                  <div className="p-0.5 rounded-lg bg-surface-hover border border-border flex items-center gap-0.5 text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => { setCalcMode('subtract'); setCalcAmount(''); }}
+                      className={`px-2 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                        calcMode === 'subtract'
+                          ? 'bg-rose-500 text-white shadow-sm'
+                          : 'text-muted hover:text-foreground'
+                      }`}
+                    >
+                      <Minus className="w-3 h-3" /> Deduct (Repaid)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCalcMode('add'); setCalcAmount(''); }}
+                      className={`px-2 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                        calcMode === 'add'
+                          ? 'bg-emerald-500 text-white shadow-sm'
+                          : 'text-muted hover:text-foreground'
+                      }`}
+                    >
+                      <Plus className="w-3 h-3" /> Add (More)
+                    </button>
+                  </div>
                 </div>
 
+                {/* Quick Action Shortcut Buttons */}
+                {numAmount > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-muted font-medium">Quick Options:</span>
+                    {calcMode === 'subtract' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setCalcAmount((numAmount / 2).toFixed(2))}
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition cursor-pointer"
+                        >
+                          − 50% (Half)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalcAmount((numAmount * 0.25).toFixed(2))}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-surface-hover text-muted hover:bg-surface border border-border/60 transition cursor-pointer"
+                        >
+                          − 25%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalcAmount((numAmount * 0.75).toFixed(2))}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-surface-hover text-muted hover:bg-surface border border-border/60 transition cursor-pointer"
+                        >
+                          − 75%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalcAmount(numAmount.toFixed(2))}
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition cursor-pointer"
+                        >
+                          − Full (100%)
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {[100, 500, 1000, 5000].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => setCalcAmount(String(val))}
+                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition cursor-pointer"
+                          >
+                            + PKR {val}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Amount Input for Adjustment */}
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted">Deduct PKR</span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted">
+                    {calcMode === 'subtract' ? 'Deduct PKR' : 'Add PKR'}
+                  </span>
                   <input
                     type="number"
-                    value={deductAmount}
-                    onChange={(e) => setDeductAmount(e.target.value)}
-                    placeholder="Enter amount paid or deducted..."
+                    value={calcAmount}
+                    onChange={(e) => setCalcAmount(e.target.value)}
+                    placeholder={calcMode === 'subtract' ? 'Enter amount repaid or returned...' : 'Enter additional amount given...'}
                     className="w-full h-11 pl-28 pr-16 text-sm font-semibold bg-surface-hover/50 border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/10 rounded-xl outline-none transition-all text-foreground"
                     step="0.01"
                     min="0"
                   />
-                  {deductAmount && (
+                  {calcAmount && (
                     <button
                       type="button"
-                      onClick={() => setDeductAmount('')}
+                      onClick={() => setCalcAmount('')}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted hover:text-foreground cursor-pointer px-1.5 py-0.5 rounded bg-surface border border-border"
                     >
                       Clear
@@ -270,23 +332,26 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                   )}
                 </div>
 
-                {numDeduct > 0 && numAmount > 0 && (
+                {/* Calculation Result Preview Box */}
+                {numCalc > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="p-3.5 rounded-xl bg-surface-hover/70 border border-primary/25 space-y-2.5"
                   >
-                    {/* Visual Progress Split Bar */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px] font-medium text-muted">
-                        <span>Deducted ({pctDeducted}%)</span>
-                        <span>Remaining ({pctRemaining}%)</span>
+                    {/* Visual Progress Split Bar for Subtract */}
+                    {calcMode === 'subtract' && numAmount > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px] font-medium text-muted">
+                          <span>Repaid ({pctDeducted}%)</span>
+                          <span>Remaining ({pctRemaining}%)</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-surface overflow-hidden flex">
+                          <div className="h-full bg-rose-500 transition-all duration-300" style={{ width: `${pctDeducted}%` }} />
+                          <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${pctRemaining}%` }} />
+                        </div>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-surface overflow-hidden flex">
-                        <div className="h-full bg-rose-500 transition-all duration-300" style={{ width: `${pctDeducted}%` }} />
-                        <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${pctRemaining}%` }} />
-                      </div>
-                    </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
                       <div className="p-2 rounded-lg bg-card border border-border">
@@ -294,22 +359,26 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                         <p className="font-bold text-foreground">PKR {numAmount.toFixed(2)}</p>
                       </div>
                       <div className="p-2 rounded-lg bg-card border border-border">
-                        <p className="text-[10px] text-muted font-medium">Payment / Deducted</p>
-                        <p className="font-bold text-danger">− PKR {numDeduct.toFixed(2)}</p>
+                        <p className="text-[10px] text-muted font-medium">
+                          {calcMode === 'subtract' ? 'Repaid / Deducted' : 'Additional Amount'}
+                        </p>
+                        <p className={`font-bold ${calcMode === 'subtract' ? 'text-danger' : 'text-emerald-500'}`}>
+                          {calcMode === 'subtract' ? '−' : '+'} PKR {numCalc.toFixed(2)}
+                        </p>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-1 border-t border-border/60 text-xs">
-                      <span className="font-semibold text-foreground">New Remaining Balance:</span>
-                      <span className="font-extrabold text-primary text-base">PKR {newAmount.toFixed(2)}</span>
+                      <span className="font-semibold text-foreground">New Adjusted Total:</span>
+                      <span className="font-extrabold text-primary text-base">PKR {calculatedTotal.toFixed(2)}</span>
                     </div>
 
                     <button
                       type="button"
-                      onClick={handleApplyDeduction}
+                      onClick={handleApplyCalc}
                       className="w-full py-2.5 px-3 rounded-xl gradient-primary text-white text-xs font-bold hover:shadow-lg hover:shadow-primary/20 transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border border-primary/30"
                     >
-                      <Check className="w-4 h-4" /> Apply New Amount (PKR {newAmount.toFixed(2)})
+                      <Check className="w-4 h-4" /> Apply New Total (PKR {calculatedTotal.toFixed(2)})
                     </button>
                   </motion.div>
                 )}
