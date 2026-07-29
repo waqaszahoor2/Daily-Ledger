@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { signIn } from 'next-auth/react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +19,14 @@ export default function LoginPage() {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    toast.info('Google OAuth will be configured with your credentials in .env.local');
-    // In production, this would call signIn('google')
-    // For now, simulate login and redirect
-    setTimeout(() => {
-      localStorage.setItem('dl_user', JSON.stringify({ name: 'User', email: 'user@example.com', provider: 'google' }));
-      localStorage.setItem('dl_first_login', 'true');
-      router.push('/dashboard');
-    }, 1000);
+    try {
+      toast.loading('Redirecting to Google Sign-In...');
+      await signIn('google', { callbackUrl: '/dashboard' });
+    } catch (err) {
+      console.error('Google Sign-In error:', err);
+      toast.error('Google Sign-In failed');
+      setLoading(false);
+    }
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {

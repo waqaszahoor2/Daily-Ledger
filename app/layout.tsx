@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
+import { SessionProvider } from "@/components/providers/SessionProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -23,17 +24,19 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
-          <Toaster
-            position="bottom-right"
-            richColors
-            toastOptions={{
-              className: "rounded-xl",
-              duration: 3000,
-            }}
-          />
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+            {children}
+            <Toaster
+              position="bottom-right"
+              richColors
+              toastOptions={{
+                className: "rounded-xl",
+                duration: 3000,
+              }}
+            />
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );
