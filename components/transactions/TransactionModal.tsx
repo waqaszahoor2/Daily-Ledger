@@ -15,11 +15,11 @@ import { todayISO, nowTime } from '@/lib/utils/dates';
 import { toast } from 'sonner';
 import type { TransactionType } from '@/types';
 
-const typeConfig: Record<TransactionType, { label: string; urdu: string; activeBg: string; activeText: string; icon: typeof Plus }> = {
-  income: { label: 'Income', urdu: 'Aamdani', activeBg: 'bg-emerald-500/10 dark:bg-emerald-500/20', activeText: 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30', icon: Plus },
-  expense: { label: 'Expense', urdu: 'Kharcha', activeBg: 'bg-rose-500/10 dark:bg-rose-500/20', activeText: 'text-rose-600 dark:text-rose-400 border-rose-500/30', icon: Minus },
-  money_given: { label: 'Money Given', urdu: 'Udhar Diya', activeBg: 'bg-amber-500/10 dark:bg-amber-500/20', activeText: 'text-amber-600 dark:text-amber-400 border-amber-500/30', icon: ArrowLeftRight },
-  money_received: { label: 'Money Received', urdu: 'Udhar Liya / Mile', activeBg: 'bg-teal-500/10 dark:bg-teal-500/20', activeText: 'text-teal-600 dark:text-teal-400 border-teal-500/30', icon: Users },
+const typeConfig: Record<TransactionType, { label: string; english: string; activeBg: string; activeText: string; icon: typeof Plus }> = {
+  income: { label: 'Aamdani', english: 'Income', activeBg: 'bg-emerald-500/10 dark:bg-emerald-500/20', activeText: 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30', icon: Plus },
+  expense: { label: 'Kharcha', english: 'Expense', activeBg: 'bg-rose-500/10 dark:bg-rose-500/20', activeText: 'text-rose-600 dark:text-rose-400 border-rose-500/30', icon: Minus },
+  money_given: { label: 'Udhar Diya', english: 'Money Given', activeBg: 'bg-amber-500/10 dark:bg-amber-500/20', activeText: 'text-amber-600 dark:text-amber-400 border-amber-500/30', icon: ArrowLeftRight },
+  money_received: { label: 'Udhar Liya', english: 'Money Received', activeBg: 'bg-teal-500/10 dark:bg-teal-500/20', activeText: 'text-teal-600 dark:text-teal-400 border-teal-500/30', icon: Users },
 };
 
 export function TransactionModal({ defaultType = 'expense' }: { defaultType?: TransactionType }) {
@@ -148,7 +148,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
               </div>
               <div>
                 <h2 className="text-base font-bold text-foreground tracking-tight">
-                  {editingTx ? 'Edit Transaction (Indraj Edit)' : 'New Transaction (Naya Indraj)'}
+                  {editingTx ? 'Naya Indraj / Edit Entry' : 'Naya Indraj / New Transaction'}
                 </h2>
                 <p className="text-xs text-muted">
                   {editingTx ? 'Update financial ledger entry' : 'Record new income, expense or debt entry'}
@@ -174,15 +174,15 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                     key={t}
                     type="button"
                     onClick={() => handleTypeChange(t)}
-                    className={`flex flex-col items-center justify-center gap-0.5 py-2 px-1.5 rounded-xl transition-all text-xs font-semibold cursor-pointer ${
+                    className={`flex flex-col items-center justify-center gap-0.5 py-2.5 px-1.5 rounded-xl transition-all text-xs font-semibold cursor-pointer ${
                       isActive
                         ? `${cfg.activeBg} ${cfg.activeText} border shadow-sm`
                         : 'text-muted hover:text-foreground hover:bg-card/50 border border-transparent'
                     }`}
                   >
                     <cfg.icon className="w-4 h-4 mb-0.5" />
-                    <span className="text-[11px] leading-none font-bold">{cfg.label}</span>
-                    <span className="text-[9px] opacity-80 font-medium leading-tight text-center">({cfg.urdu})</span>
+                    <span className="text-[12px] leading-tight font-bold">{cfg.label}</span>
+                    <span className="text-[9.5px] opacity-75 font-medium text-center">({cfg.english})</span>
                   </button>
                 );
               })}
@@ -192,7 +192,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-foreground flex items-center gap-1">
-                  Total Amount (Kull Raqam) <span className="text-danger">*</span>
+                  Kull Raqam (Total Amount) <span className="text-danger">*</span>
                 </label>
                 {amount && (
                   <button
@@ -200,7 +200,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                     onClick={() => setAmount('')}
                     className="text-[11px] font-medium text-muted hover:text-foreground transition cursor-pointer"
                   >
-                    Reset (Khatam)
+                    Khatam (Reset)
                   </button>
                 )}
               </div>
@@ -226,7 +226,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
               <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-sm space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Calculator className="w-4 h-4 text-primary" /> Repayment & Adjustment Calculator (Hisab Kitab)
+                    <Calculator className="w-4 h-4 text-primary" /> Hisab Kitab (Repayment Calculator)
                   </span>
 
                   {/* Mode Switcher: Minus (-) vs Plus (+) */}
@@ -259,7 +259,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                 {/* Quick Action Shortcut Buttons */}
                 {numAmount > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                    <span className="text-[10px] text-muted font-medium">Quick Options:</span>
+                    <span className="text-[10px] text-muted font-medium">Asan Options:</span>
                     {calcMode === 'subtract' ? (
                       <>
                         <button
@@ -317,7 +317,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                     type="number"
                     value={calcAmount}
                     onChange={(e) => setCalcAmount(e.target.value)}
-                    placeholder={calcMode === 'subtract' ? 'Enter amount repaid or returned (Kitne wapas mile)...' : 'Enter additional amount given (Kitne mazeed diye)...'}
+                    placeholder={calcMode === 'subtract' ? 'Kitne wapas mile...' : 'Kitne mazeed diye...'}
                     className="w-full h-11 pl-28 pr-16 text-sm font-semibold bg-surface-hover/50 border border-border hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/10 rounded-xl outline-none transition-all text-foreground"
                     step="0.01"
                     min="0"

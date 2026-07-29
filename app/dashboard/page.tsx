@@ -193,25 +193,29 @@ export default function DashboardPage() {
             <div className="quick-action-icon bg-danger/10">
               <Minus className="w-5 h-5 text-danger" />
             </div>
-            <span className="text-xs font-medium text-foreground">Expense</span>
+            <span className="text-xs font-semibold text-foreground">Kharcha</span>
+            <span className="text-[10px] text-muted -mt-1">(Expense)</span>
           </button>
           <button onClick={() => openModalWithType('income')} className="quick-action">
             <div className="quick-action-icon bg-primary/10">
               <Plus className="w-5 h-5 text-primary" />
             </div>
-            <span className="text-xs font-medium text-foreground">Income</span>
+            <span className="text-xs font-semibold text-foreground">Aamdani</span>
+            <span className="text-[10px] text-muted -mt-1">(Income)</span>
           </button>
           <button onClick={() => openModalWithType('money_given')} className="quick-action">
             <div className="quick-action-icon bg-warning/10">
               <ArrowLeftRight className="w-5 h-5 text-warning" />
             </div>
-            <span className="text-xs font-medium text-foreground">Given</span>
+            <span className="text-xs font-semibold text-foreground">Udhar Diya</span>
+            <span className="text-[10px] text-muted -mt-1">(Given)</span>
           </button>
           <button onClick={() => openModalWithType('money_received')} className="quick-action">
             <div className="quick-action-icon bg-primary/10">
               <Users className="w-5 h-5 text-primary" />
             </div>
-            <span className="text-xs font-medium text-foreground">Received</span>
+            <span className="text-xs font-semibold text-foreground">Udhar Liya</span>
+            <span className="text-[10px] text-muted -mt-1">(Received)</span>
           </button>
         </div>
       </motion.div>
