@@ -23,11 +23,12 @@ export default function DebtsPage() {
     p.personName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleRecordRepayment = (personName: string) => {
+  const handleRecordRepayment = (personName: string, netBalance: number) => {
+    const owesYou = netBalance > 0;
     setModalInitialData({
       personName,
-      type: 'money_received',
-      categoryId: 'repaid_in',
+      type: owesYou ? 'money_received' : 'money_given',
+      categoryId: owesYou ? 'repaid_in' : 'repaid_out',
     });
     setShowModal(true);
   };
@@ -204,10 +205,10 @@ export default function DebtsPage() {
                 {/* Quick Repayment & Action Buttons */}
                 <div className="flex flex-wrap gap-2 pt-1 border-t border-border/50">
                   <button
-                    onClick={() => handleRecordRepayment(person.personName)}
+                    onClick={() => handleRecordRepayment(person.personName, person.netBalance)}
                     className="btn-primary flex-1 py-2 text-xs"
                   >
-                    <Plus className="w-3.5 h-3.5" /> Record Repayment (Received)
+                    <Plus className="w-3.5 h-3.5" /> {owesYou ? 'Record Repayment (Received)' : 'Record Payment (Pay Back)'}
                   </button>
                   <button
                     onClick={() => handleLendMore(person.personName)}

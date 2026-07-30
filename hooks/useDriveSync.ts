@@ -6,11 +6,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import { useAppStore } from '@/store/useAppStore';
 import { performAutoDriveSync } from '@/lib/drive/drive';
 import { toast } from 'sonner';
 
 export function useDriveSync() {
+  const { data: session } = useSession();
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
   const refreshKey = useAppStore((s) => s.refreshKey);
@@ -46,11 +48,8 @@ export function useDriveSync() {
   const triggerAutoSync = useCallback(async () => {
     if (!settings.driveConfig.connected || !isOnline || isSyncingRef.current) return;
 
-    // Check for access token stored in session/localStorage
-    const storedUser = localStorage.getItem('dl_user');
-    if (!storedUser) return;
-    const user = JSON.parse(storedUser);
-    const accessToken = user.accessToken || user.token || 'demo-access-token';
+    // Use NextAuth session access token if available, fallback to demo mode
+    const accessToken = (session as { accessToken?: string })?.accessToken || 'demo-access-token';
 
     isSyncingRef.current = true;
     setSyncing(true);

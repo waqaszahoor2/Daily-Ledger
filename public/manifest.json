@@ -1,0 +1,16 @@
+{
+  "name": "DailyLedger - Privacy First Personal Finance",
+  "short_name": "DailyLedger",
+  "description": "Privacy-first personal finance app. Stored on your device, backed up to your Google Drive.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#1a5c2e",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

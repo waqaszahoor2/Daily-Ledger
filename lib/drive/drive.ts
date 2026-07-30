@@ -111,7 +111,10 @@ export async function listDriveBackups(accessToken: string, folderId: string): P
 export async function getOrCreateDrivePassphrase(): Promise<string> {
   let pass = await getSetting<string>('drive_passphrase');
   if (!pass) {
-    pass = `DL-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`;
+    const randBuffer = new Uint8Array(8);
+    crypto.getRandomValues(randBuffer);
+    const randHex = Array.from(randBuffer, (b) => b.toString(16).padStart(2, '0')).join('');
+    pass = `DL-${randHex}-${Date.now()}`;
     await setSetting('drive_passphrase', pass);
   }
   return pass;

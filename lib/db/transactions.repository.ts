@@ -3,7 +3,7 @@
 // Repository pattern for transaction CRUD
 // ============================================================
 
-import { getDB } from './dexie';
+import { getDB, getCurrentUserId } from './dexie';
 import type { Transaction, TransactionType, DashboardMetrics } from '@/types';
 import { toMinorUnits, fromMinorUnits } from '@/lib/utils/money';
 import { generateId } from '@/lib/utils/id';
@@ -15,14 +15,25 @@ export class TransactionRepository {
 
   async create(data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> {
     const now = new Date().toISOString();
+    const currentUserId = getCurrentUserId();
     const tx: Transaction = {
       ...data,
+      userId: data.userId || currentUserId,
       id: generateId(),
       createdAt: now,
       updatedAt: now,
     };
     await this.db.transactions.add(tx);
     return tx;
+  }
+
+  async restore(tx: Transaction): Promise<void> {
+    const currentUserId = getCurrentUserId();
+    await this.db.transactions.put({
+      ...tx,
+      userId: tx.userId || currentUserId,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   async update(id: string, data: Partial<Omit<Transaction, 'id' | 'createdAt'>>): Promise<void> {
@@ -37,27 +48,36 @@ export class TransactionRepository {
   }
 
   async getAll(): Promise<Transaction[]> {
-    return this.db.transactions.orderBy('date').reverse().toArray();
+    const currentUserId = getCurrentUserId();
+    const all = await this.db.transactions.orderBy('date').reverse().toArray();
+    return all.filter(t => !t.userId || t.userId === currentUserId);
   }
 
   async getById(id: string): Promise<Transaction | undefined> {
-    return this.db.transactions.get(id);
+    const tx = await this.db.transactions.get(id);
+    const currentUserId = getCurrentUserId();
+    if (tx && tx.userId && tx.userId !== currentUserId) return undefined;
+    return tx;
   }
 
   async getByDateRange(startDate: string, endDate: string): Promise<Transaction[]> {
-    return this.db.transactions
+    const currentUserId = getCurrentUserId();
+    const items = await this.db.transactions
       .where('date')
       .between(startDate, endDate, true, true)
       .reverse()
       .toArray();
+    return items.filter(t => !t.userId || t.userId === currentUserId);
   }
 
   async getByType(type: TransactionType): Promise<Transaction[]> {
-    return this.db.transactions
+    const currentUserId = getCurrentUserId();
+    const items = await this.db.transactions
       .where('type')
       .equals(type)
       .reverse()
       .sortBy('date');
+    return items.filter(t => !t.userId || t.userId === currentUserId);
   }
 
   async search(query: string): Promise<Transaction[]> {

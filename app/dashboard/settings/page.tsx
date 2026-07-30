@@ -80,33 +80,42 @@ export default function SettingsPage() {
       if (!file) return;
 
       try {
+        let data: { transactions?: unknown[]; settings?: unknown[] };
+
         if (file.name.endsWith('.dlb')) {
           const password = prompt('Enter your backup password:');
           if (!password) return;
 
           const buffer = await file.arrayBuffer();
           const decrypted = await decryptData(buffer, password);
-          const data = JSON.parse(decrypted);
-
-          const db = getDB();
-          await db.transactions.clear();
-          await db.settings.clear();
-          if (data.transactions) await db.transactions.bulkAdd(data.transactions);
-          if (data.settings) await db.settings.bulkAdd(data.settings);
-
-          toast.success('Backup restored successfully!');
+          data = JSON.parse(decrypted);
         } else {
           const text = await file.text();
-          const data = JSON.parse(text);
-
-          const db = getDB();
-          await db.transactions.clear();
-          if (data.transactions) await db.transactions.bulkAdd(data.transactions);
-
-          toast.success('JSON backup restored!');
+          data = JSON.parse(text);
         }
-      } catch {
-        toast.error('Restore failed. Incorrect password or corrupted file.');
+
+        // Schema validation before modifying database
+        if (!data || typeof data !== 'object' || !Array.isArray(data.transactions)) {
+          throw new Error('Invalid backup file schema structure');
+        }
+
+        const db = getDB();
+        // Atomic transaction with automatic rollback if bulkAdd fails
+        await db.transaction('rw', [db.transactions, db.settings], async () => {
+          await db.transactions.clear();
+          await db.settings.clear();
+          if (data.transactions && data.transactions.length > 0) {
+            await db.transactions.bulkAdd(data.transactions as any);
+          }
+          if (data.settings && data.settings.length > 0) {
+            await db.settings.bulkAdd(data.settings as any);
+          }
+        });
+
+        toast.success('Backup restored successfully!');
+      } catch (err) {
+        console.error('Restore error:', err);
+        toast.error('Restore failed. Incorrect password, invalid format, or corrupted file.');
       }
     };
     fileInput.click();

@@ -15,6 +15,7 @@ export type Category = {
 
 export type Transaction = {
   id: string;
+  userId?: string;
   type: TransactionType;
   amount: number; // stored in minor units (integer × 100)
   categoryId: string;
@@ -58,7 +59,7 @@ export type DashboardMetrics = {
   period: 'today' | 'week' | 'month' | 'all';
 };
 
-export type ReportPeriod = 'daily' | 'weekly' | 'monthly';
+export type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export type ChartDataPoint = {
   label: string;

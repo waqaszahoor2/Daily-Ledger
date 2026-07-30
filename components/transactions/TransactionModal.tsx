@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Plus, Minus, ArrowLeftRight, Users, Calculator, Check,
@@ -12,6 +12,7 @@ import { useDebts } from '@/hooks/useDebts';
 import { getCategoriesByType } from '@/config/categories';
 import { toMinorUnits } from '@/lib/utils/money';
 import { todayISO, nowTime } from '@/lib/utils/dates';
+import { sanitizeInput } from '@/lib/utils/sanitize';
 import { toast } from 'sonner';
 import type { TransactionType } from '@/types';
 
@@ -81,8 +82,9 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
   };
 
   const handleSave = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      toast.error('Please enter a valid amount');
+    const numAmt = parseFloat(amount);
+    if (!amount || isNaN(numAmt) || !Number.isFinite(numAmt) || numAmt <= 0 || numAmt > 100_000_000) {
+      toast.error('Please enter a valid amount (between 0.01 and 100,000,000)');
       return;
     }
     if (!categoryId) {
@@ -93,6 +95,14 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
       toast.error('Please enter the person name');
       return;
     }
+    if (personName.trim().length > 100) {
+      toast.error('Person name cannot exceed 100 characters');
+      return;
+    }
+    if (notes.trim().length > 500) {
+      toast.error('Notes cannot exceed 500 characters');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -100,8 +110,8 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
         type,
         amount: toMinorUnits(parseFloat(amount)),
         categoryId,
-        personName: personName.trim() || undefined,
-        notes: notes.trim() || undefined,
+        personName: personName.trim() ? sanitizeInput(personName.trim()) : undefined,
+        notes: notes.trim() ? sanitizeInput(notes.trim()) : undefined,
         date,
         time,
       };
@@ -121,6 +131,15 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
     }
   };
 
+  // Escape key listener for accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Recent contact names for quick selection
   const recentPersons = personBalances.map((p) => p.personName).filter(Boolean);
 
@@ -134,6 +153,9 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
         onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
       >
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="transaction-modal-title"
           initial={{ y: '100%', opacity: 0, scale: 0.98 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: '100%', opacity: 0, scale: 0.98 }}
@@ -147,7 +169,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-foreground tracking-tight">
+                <h2 id="transaction-modal-title" className="text-base font-bold text-foreground tracking-tight">
                   {editingTx ? 'Naya Indraj / Edit Entry' : 'Naya Indraj / New Transaction'}
                 </h2>
                 <p className="text-xs text-muted">
@@ -157,6 +179,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
             </div>
             <button
               onClick={handleClose}
+              aria-label="Close modal"
               className="w-9 h-9 rounded-xl bg-surface-hover/80 hover:bg-surface border border-border/60 flex items-center justify-center text-muted hover:text-foreground transition cursor-pointer"
             >
               <X className="w-4 h-4" />

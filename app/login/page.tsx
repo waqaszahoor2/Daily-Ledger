@@ -31,21 +31,30 @@ export default function LoginPage() {
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error('Please fill in all fields');
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      toast.error('Please enter a valid email address');
       return;
     }
-    if (!isLogin && !name) {
-      toast.error('Please enter your name');
+    if (!password || password.length < 8) {
+      toast.error('Password must be at least 8 characters long');
+      return;
+    }
+    if (!isLogin && !name.trim()) {
+      toast.error('Please enter your full name');
       return;
     }
     setLoading(true);
 
     try {
-      // Store user locally
+      // Store user identity securely locally
+      const userId = `user_${btoa(cleanEmail).replace(/=/g, '')}`;
       localStorage.setItem('dl_user', JSON.stringify({
-        name: name || email.split('@')[0],
-        email,
+        id: userId,
+        name: name.trim() || cleanEmail.split('@')[0],
+        email: cleanEmail,
         provider: 'email',
       }));
       

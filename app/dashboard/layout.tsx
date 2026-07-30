@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Settings, LogOut, Menu, X,
-  Sun, Moon, Cloud, AlertTriangle, ChevronRight, Shield, HandCoins, RefreshCw
+  Sun, Moon, Cloud, AlertTriangle, ChevronRight, Shield, HandCoins, RefreshCw, User
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/dashboard/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/dashboard/debts', label: 'Debts', icon: HandCoins },
   { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/dashboard/account', label: 'Account', icon: User },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 

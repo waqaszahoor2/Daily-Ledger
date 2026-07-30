@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -43,6 +44,15 @@ export function GoogleDrivePopup() {
     setShow(false);
   };
 
+  useEffect(() => {
+    if (!show) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleSkip();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [show]);
+
   return (
     <AnimatePresence>
       {show && (
@@ -54,6 +64,9 @@ export function GoogleDrivePopup() {
           onClick={(e) => { if (e.target === e.currentTarget) handleSkip(); }}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="drive-popup-title"
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -61,6 +74,7 @@ export function GoogleDrivePopup() {
           >
             <button
               onClick={handleSkip}
+              aria-label="Close dialog"
               className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1.5 rounded-xl hover:bg-surface-hover transition text-muted"
             >
               <X className="w-5 h-5" />
@@ -71,7 +85,7 @@ export function GoogleDrivePopup() {
               <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center mx-auto">
                 <Cloud className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-foreground">Connect Your Google Drive</h2>
+              <h2 id="drive-popup-title" className="text-xl sm:text-2xl font-bold text-foreground">Connect Your Google Drive</h2>
             </div>
 
             {/* Description */}

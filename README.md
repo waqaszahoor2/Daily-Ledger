@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🛡️ DailyLedger — Privacy-First Personal Finance Web Application
 
-## Getting Started
+DailyLedger is an enterprise-grade, privacy-first personal finance management web application built with Next.js 16, React 19, TypeScript, Framer Motion, and Dexie.js (IndexedDB).
 
-First, run the development server:
+> **Privacy Guarantee**: DailyLedger **never** stores your financial records on external company servers. All financial entries are stored locally on your device in IndexedDB, with user-isolated data partitioning, AES-256-GCM client-side encrypted backup capabilities, and direct integration into your personal Google Drive account (`drive.file` minimum scope).
+
+---
+
+## 🚀 Features
+
+- 🔒 **Privacy-First Local Storage**: All financial records stay in IndexedDB, partitioned strictly by `userId`.
+- 🔑 **Secure Authentication**: Google OAuth 2.0 via Auth.js (NextAuth v5) and validated email credentials.
+- ☁️ **Google Drive Auto-Sync**: Client-side AES-256-GCM encrypted backup directly to your private Google Drive (`DailyLedger_Backups`).
+- 💸 **Full Financial CRUD & Repayment Calculator**:
+  - Income (*Aamdani*)
+  - Expenses (*Kharcha*)
+  - Money Given (*Udhar Diya*)
+  - Money Received (*Udhar Liya*)
+  - Embedded Repayment Percentage & Adjustment Calculator
+- ↩️ **Undo Delete**: 5-second instant recovery toast for deleted transactions.
+- 📊 **Comprehensive Analytics & Reports**:
+  - Daily, Weekly, Monthly, and Yearly breakdown views
+  - Responsive charts powered by Recharts
+  - One-click export to **CSV**, **Excel (.xls)**, and **PDF Print**
+- 🤝 **Debts & Lending Ledger**: Tracks exact net balances per contact with automatic repayment direction selection.
+- 👤 **Dedicated Account Dashboard**: Real-time Web Storage quota estimation, Google Drive status, and user profile management.
+- ♿ **WCAG AA Compliant**: Dialog ARIA semantics, Escape key handlers, and high-contrast theme support (Dark/Light mode).
+
+---
+
+## 🛠️ Environment Variables Setup
+
+Copy `.env.example` to `.env.local` before starting the application:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Google OAuth credentials (from Google Cloud Console)
+AUTH_GOOGLE_ID=your-google-client-id
+AUTH_GOOGLE_SECRET=your-google-client-secret
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# NextAuth Secret
+NEXTAUTH_URL=http://localhost:3000
+AUTH_SECRET=your-32-character-secret-key
+NEXTAUTH_SECRET=your-32-character-secret-key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📦 Getting Started
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Install dependencies and run the development server:
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🌐 Production Build & Deployment
 
-## Deploy on Vercel
+Build for production:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build
+npm run start
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploying to Vercel requires setting `AUTH_SECRET`, `NEXTAUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET` under Vercel Project Settings -> Environment Variables.
+
+---
+
+## 📄 License
+
+MIT License — Privacy-first financial independence for everyone.

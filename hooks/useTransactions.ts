@@ -53,6 +53,11 @@ export function useTransactions() {
     triggerRefresh();
   };
 
+  const restoreTransaction = async (tx: Transaction) => {
+    await txRepo.restore(tx);
+    triggerRefresh();
+  };
+
   const searchTransactions = async (query: string) => {
     if (!query.trim()) {
       const data = await txRepo.getAll();
@@ -85,6 +90,7 @@ export function useTransactions() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    restoreTransaction,
     searchTransactions,
     filterByType,
     filterByDateRange,

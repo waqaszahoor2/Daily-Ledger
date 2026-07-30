@@ -14,10 +14,23 @@ class DailyLedgerDB extends Dexie {
     super('dailyledger-db');
 
     this.version(1).stores({
-      transactions: 'id, type, date, categoryId, createdAt',
+      transactions: 'id, userId, type, date, categoryId, createdAt',
       settings: 'key',
     });
   }
+}
+
+export function getCurrentUserId(): string {
+  if (typeof window === 'undefined') return 'guest_user';
+  try {
+    const stored = localStorage.getItem('dl_user');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.id) return parsed.id;
+      if (parsed.email) return `user_${btoa(parsed.email.toLowerCase()).replace(/=/g, '')}`;
+    }
+  } catch {}
+  return 'guest_user';
 }
 
 // Singleton instance
