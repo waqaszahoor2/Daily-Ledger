@@ -33,6 +33,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: {
     signIn: "/login",
   },
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || (process.env.NODE_ENV === "production" ? undefined : "dailyledger_development_fallback_secret_32chars"),
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dailyledger_production_secure_jwt_secret_key_32chars",
 });
 
