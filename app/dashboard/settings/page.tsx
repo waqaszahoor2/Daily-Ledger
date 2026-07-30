@@ -1,12 +1,20 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+// ============================================================
+// DailyLedger — app/dashboard/settings/page.tsx
+// App preferences, local backup/restore, theme switcher,
+// and danger zone. Logout properly calls signOut() to clear
+// the server-side NextAuth session cookie.
+// ============================================================
+
+import { useSyncExternalStore } from 'react';
 import {
   User, Cloud, Download, Upload, Sun, Moon, Monitor, LogOut,
   Shield, AlertTriangle, CheckCircle2, Trash2
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import { useAppStore } from '@/store/useAppStore';
 import { getDB } from '@/lib/db/dexie';
 import { encryptData, decryptData } from '@/lib/encryption/crypto';
@@ -19,25 +27,39 @@ const getServerSnapshot = () => false;
 export default function SettingsPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const { data: session, status } = useSession();
   const settings = useAppStore((s) => s.settings);
   const setShowDrivePopup = useAppStore((s) => s.setShowDrivePopup);
 
   const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
-  const [user] = useState<{ name: string; email: string } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const stored = localStorage.getItem('dl_user');
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {}
-    }
-    return null;
-  });
 
-  const handleLogout = () => {
+  // Single source of truth — prefer session, fall back to localStorage
+  const user = (() => {
+    if (!mounted) return null;
+    if (session?.user) {
+      return { name: session.user.name || 'User', email: session.user.email || '' };
+    }
+    try {
+      const stored = localStorage.getItem('dl_user');
+      if (stored) return JSON.parse(stored) as { name: string; email: string };
+    } catch { /* ignore */ }
+    return null;
+  })();
+
+  /**
+   * Logout — properly clears both localStorage and the NextAuth
+   * server-side session cookie (via signOut).
+   */
+  const handleLogout = async () => {
     localStorage.removeItem('dl_user');
-    toast.success('Logged out');
-    router.push('/');
+    localStorage.removeItem('dl_first_login');
+
+    if (status === 'authenticated') {
+      await signOut({ callbackUrl: '/' });
+    } else {
+      toast.success('Logged out');
+      router.push('/');
+    }
   };
 
   const handleBackup = async () => {
@@ -53,7 +75,6 @@ export default function SettingsPage() {
         settings: allSettings,
       });
 
-      // Prompt for password
       const password = prompt('Enter a password to encrypt your backup:');
       if (!password || password.length < 4) {
         toast.error('Password must be at least 4 characters');
@@ -99,13 +120,11 @@ export default function SettingsPage() {
           data = JSON.parse(text);
         }
 
-        // Schema validation before modifying database
         if (!data || typeof data !== 'object' || !Array.isArray(data.transactions)) {
           throw new Error('Invalid backup file schema structure');
         }
 
         const db = getDB();
-        // Atomic transaction with automatic rollback if bulkAdd fails
         await db.transaction('rw', [db.transactions, db.settings], async () => {
           await db.transactions.clear();
           await db.settings.clear();
@@ -147,7 +166,7 @@ export default function SettingsPage() {
     <div className="page-container space-y-6 max-w-2xl">
       <div>
         <h2 className="text-2xl font-bold text-foreground">Settings</h2>
-        <p className="text-sm text-muted mt-1">Manage your preferences & data</p>
+        <p className="text-sm text-muted mt-1">Manage your preferences &amp; data</p>
       </div>
 
       {/* Profile */}
@@ -181,7 +200,7 @@ export default function SettingsPage() {
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">Google Drive Connected</p>
               <p className="text-xs text-muted mt-0.5">
-                Folder: {settings.driveConfig.folderName || 'DailyLedger'}
+                Folder: {settings.driveConfig.folderName || 'DailyLedger_Backups'}
               </p>
             </div>
           </div>
@@ -205,7 +224,7 @@ export default function SettingsPage() {
       <div className="glass-card p-5">
         <div className="flex items-center gap-3 mb-4">
           <Shield className="w-5 h-5 text-primary" />
-          <h3 className="section-title">Backup & Restore</h3>
+          <h3 className="section-title">Backup &amp; Restore</h3>
         </div>
         <p className="text-xs text-muted mb-4">Export AES-256-GCM encrypted backup files or restore from a previous backup.</p>
         <div className="grid grid-cols-2 gap-3">

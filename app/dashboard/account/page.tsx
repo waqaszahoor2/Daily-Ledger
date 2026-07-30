@@ -1,5 +1,12 @@
 'use client';
 
+// ============================================================
+// DailyLedger — app/dashboard/account/page.tsx
+// Account identity, encryption key management, and Google Drive
+// cloud backup controls. Uses useSession() as the single source
+// of truth for user identity (no dual-source race condition).
+// ============================================================
+
 import { useState, useEffect, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -27,27 +34,41 @@ const getServerSnapshot = () => false;
 
 export default function AccountPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
   const { syncing, lastSyncTime, triggerAutoSync } = useDriveSync();
 
   const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
-  const [user, setUser] = useState<{ id?: string; name: string; email: string; provider?: string } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const stored = localStorage.getItem('dl_user');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
+
+  // ── Single source of truth for user identity ─────────────
+  // Prefer NextAuth session (Google OAuth). Fall back to localStorage
+  // for email-auth users. No race condition: user is derived synchronously.
+  const user = (() => {
+    if (!mounted) return null;
+
+    if (session?.user) {
+      return {
+        name: session.user.name || 'User',
+        email: session.user.email || '',
+        provider: 'Google OAuth 2.0',
+      };
+    }
+
+    try {
+      const stored = localStorage.getItem('dl_user');
+      if (stored) {
+        const parsed = JSON.parse(stored) as { name: string; email: string; provider?: string };
         return {
           ...parsed,
           provider: parsed.provider === 'google' ? 'Google OAuth 2.0' : 'Email Authentication',
         };
-      } catch {}
-    }
+      }
+    } catch { /* ignore */ }
+
     return null;
-  });
+  })();
 
   const [storageEstimate, setStorageEstimate] = useState<{ usageKB: number; quotaMB: number } | null>(null);
   const [passphrase, setPassphrase] = useState<string>('');
@@ -57,19 +78,8 @@ export default function AccountPage() {
   const [actionFileId, setActionFileId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (session?.user) {
-      const u = session.user;
-      queueMicrotask(() => {
-        setUser({
-          name: u.name || 'User',
-          email: u.email || '',
-          provider: 'Google OAuth 2.0',
-        });
-      });
-    }
-
     // Estimate local storage usage
-    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+    if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
       navigator.storage.estimate().then((est) => {
         const usageKB = Math.round((est.usage || 0) / 1024);
         const quotaMB = Math.round((est.quota || 0) / (1024 * 1024));
@@ -79,7 +89,7 @@ export default function AccountPage() {
 
     // Fetch encryption passphrase
     getOrCreateDrivePassphrase().then((p) => setPassphrase(p)).catch(() => {});
-  }, [session]);
+  }, []); // Only on mount — no session dependency needed
 
   const handleCopyPassphrase = () => {
     if (!passphrase) return;
@@ -92,7 +102,7 @@ export default function AccountPage() {
     const folderId = settings.driveConfig.folderId;
 
     if (!settings.driveConfig.connected || !folderId || !accessToken) {
-      toast.error('Google Drive is not connected with an active OAuth session.');
+      toast.error('Google Drive is not connected with an active OAuth session. Please connect Drive first.');
       return;
     }
 
@@ -165,10 +175,16 @@ export default function AccountPage() {
 
   const handleSignOut = async () => {
     localStorage.removeItem('dl_user');
+    localStorage.removeItem('dl_first_login');
     await closeAndLockUserDB();
-    await signOut({ callbackUrl: '/' });
-    toast.success('Signed out cleanly');
-    router.push('/login');
+
+    if (status === 'authenticated') {
+      // Google OAuth — clears server-side session cookie
+      await signOut({ callbackUrl: '/' });
+    } else {
+      toast.success('Signed out cleanly');
+      router.push('/login');
+    }
   };
 
   if (!mounted) return null;
@@ -210,7 +226,7 @@ export default function AccountPage() {
             <Database className="w-4 h-4" /> Partitioned Local Storage
           </div>
           <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-            AES-256 Encrypted & Isolated
+            AES-256 Encrypted &amp; Isolated
           </span>
         </div>
 
@@ -220,7 +236,7 @@ export default function AccountPage() {
             <span className="text-2xl font-bold text-foreground mt-1 block">
               {storageEstimate ? `${storageEstimate.usageKB} KB` : 'Calculating...'}
             </span>
-            <span className="text-[10px] text-muted">Financial records & settings</span>
+            <span className="text-[10px] text-muted">Financial records &amp; settings</span>
           </div>
 
           <div className="p-4 rounded-xl bg-surface-hover/70 border border-border">
@@ -280,7 +296,7 @@ export default function AccountPage() {
           </div>
           {settings.driveConfig.connected ? (
             <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Mounted & Connected
+              <CheckCircle2 className="w-3.5 h-3.5" /> Mounted &amp; Connected
             </span>
           ) : (
             <span className="text-xs font-bold text-warning bg-warning/10 px-2.5 py-1 rounded-full border border-warning/20 flex items-center gap-1">
@@ -313,7 +329,7 @@ export default function AccountPage() {
           <div className="flex items-center gap-2 pt-1 flex-wrap">
             <button
               onClick={() => triggerAutoSync()}
-              disabled={syncing}
+              disabled={syncing || !settings.driveConfig.connected}
               className="btn-primary py-2.5 text-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
@@ -322,7 +338,7 @@ export default function AccountPage() {
 
             <button
               onClick={handleFetchRemoteBackups}
-              disabled={loadingRemoteFiles}
+              disabled={loadingRemoteFiles || !settings.driveConfig.connected}
               className="btn-secondary py-2.5 text-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Cloud className="w-3.5 h-3.5 text-primary" />
