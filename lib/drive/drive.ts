@@ -163,3 +163,64 @@ export async function performAutoDriveSync(accessToken: string): Promise<{ fileI
     lastBackupAt: nowISO,
   };
 }
+
+/**
+ * Downloads a raw binary backup file from Google Drive by file ID.
+ */
+export async function downloadDriveFile(accessToken: string, fileId: string): Promise<ArrayBuffer> {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to download backup file from Google Drive');
+  }
+
+  return res.arrayBuffer();
+}
+
+/**
+ * Downloads, decrypts, schema-validates, and restores a Google Drive backup into IndexedDB atomically.
+ */
+export async function downloadAndDecryptDriveBackup(
+  accessToken: string,
+  fileId: string,
+  passphrase: string
+): Promise<void> {
+  const buffer = await downloadDriveFile(accessToken, fileId);
+  const decrypted = await decryptData(buffer, passphrase);
+  const data = JSON.parse(decrypted);
+
+  if (!data || typeof data !== 'object' || !Array.isArray(data.transactions)) {
+    throw new Error('Invalid backup file schema structure');
+  }
+
+  const db = getDB();
+  await db.transaction('rw', [db.transactions, db.settings], async () => {
+    await db.transactions.clear();
+    await db.settings.clear();
+    if (data.transactions && data.transactions.length > 0) {
+      await db.transactions.bulkAdd(data.transactions as any);
+    }
+    if (data.settings && data.settings.length > 0) {
+      await db.settings.bulkAdd(data.settings as any);
+    }
+  });
+}
+
+/**
+ * Deletes a file from Google Drive by file ID.
+ */
+export async function deleteDriveBackupFile(accessToken: string, fileId: string): Promise<void> {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to delete file from Google Drive');
+  }
+}
+
