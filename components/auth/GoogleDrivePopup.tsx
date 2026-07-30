@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -37,12 +37,12 @@ export function GoogleDrivePopup() {
     setShow(false);
   };
 
-  const handleSkip = async () => {
+  const handleSkip = useCallback(async () => {
     setSettings({ driveSkipped: true });
     await setSetting('driveSkipped', true);
     toast.warning('Google Drive backup skipped. You can connect later from Settings.');
     setShow(false);
-  };
+  }, [setSettings, setShow]);
 
   useEffect(() => {
     if (!show) return;
@@ -51,7 +51,7 @@ export function GoogleDrivePopup() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [show]);
+  }, [show, handleSkip]);
 
   return (
     <AnimatePresence>
@@ -104,7 +104,7 @@ export function GoogleDrivePopup() {
 
             {/* Benefits */}
             <div className="space-y-2 sm:space-y-2.5">
-              {benefits.map(({ icon: Icon, text }) => (
+              {benefits.map(({ text }) => (
                 <div key={text} className="flex items-center gap-2.5 sm:gap-3">
                   <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                     <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />

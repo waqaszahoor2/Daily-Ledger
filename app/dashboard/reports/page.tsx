@@ -1,26 +1,43 @@
+// ============================================================
+// DailyLedger — app/dashboard/reports/page.tsx
+// Financial analytics, yearly reporting, and safe CSV/Excel/PDF exports
+// ============================================================
+
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { BarChart3, PieChart, Calendar, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Download, FileSpreadsheet, FileText } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { BarChart3, PieChart, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RePieChart, Pie, Cell, Legend } from 'recharts';
 import { useTransactions } from '@/hooks/useTransactions';
-import { getCategoryById, DEFAULT_CATEGORIES } from '@/config/categories';
+import { getCategoryById } from '@/config/categories';
 import { formatMoney, fromMinorUnits } from '@/lib/utils/money';
-import { getMonthRange, getWeekRange, todayISO, formatDate } from '@/lib/utils/dates';
+import { getMonthRange, getWeekRange, todayISO } from '@/lib/utils/dates';
 import { useAppStore } from '@/store/useAppStore';
+import { formatCurrency } from '@/lib/domain/ledger';
 import { toast } from 'sonner';
-import type { TransactionType, ReportPeriod } from '@/types';
+import type { ReportPeriod } from '@/types';
 
 const CHART_COLORS = ['#1a5c2e', '#b11f30', '#c48928', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4', '#78716c'];
 
+/**
+ * Escapes values to prevent CSV spreadsheet formula injection (=, +, -, @)
+ */
+function sanitizeCsvCell(val: string): string {
+  if (!val) return '""';
+  const clean = val.replace(/"/g, '""');
+  if (/^[=+\-@\t\r]/.test(clean)) {
+    return `"'${clean}"`;
+  }
+  return `"${clean}"`;
+}
+
 export default function ReportsPage() {
-  const { transactions, loading } = useTransactions();
+  const { transactions } = useTransactions();
   const settings = useAppStore((s) => s.settings);
   const currency = settings.currency || 'PKR';
   const [period, setPeriod] = useState<ReportPeriod>('monthly');
 
-  // Filter transactions by period
+  // Filter transactions by period (daily, weekly, monthly, yearly)
   const filteredTxns = useMemo(() => {
     const now = new Date();
     const today = todayISO();
@@ -40,7 +57,7 @@ export default function ReportsPage() {
     });
   }, [transactions, period]);
 
-  // Export CSV
+  // Safe CSV Export
   const handleExportCSV = () => {
     if (filteredTxns.length === 0) {
       toast.error('No transactions available for export in this period');
@@ -51,18 +68,18 @@ export default function ReportsPage() {
     const rows = filteredTxns.map((t) => {
       const cat = getCategoryById(t.categoryId);
       return [
-        t.id,
-        t.date,
-        t.time || '',
-        t.type,
-        `"${cat?.name || t.categoryId}"`,
-        `"${t.personName || ''}"`,
+        sanitizeCsvCell(t.id),
+        sanitizeCsvCell(t.date),
+        sanitizeCsvCell(t.time || ''),
+        sanitizeCsvCell(t.type),
+        sanitizeCsvCell(cat?.name || t.categoryId),
+        sanitizeCsvCell(t.personName || ''),
         (t.amount / 100).toFixed(2),
-        `"${(t.notes || '').replace(/"/g, '""')}"`,
+        sanitizeCsvCell(t.notes || ''),
       ].join(',');
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -70,17 +87,17 @@ export default function ReportsPage() {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    toast.success('CSV Report exported successfully!');
+    toast.success('CSV Report exported safely!');
   };
 
-  // Export Excel
+  // Safe Excel Export
   const handleExportExcel = () => {
     if (filteredTxns.length === 0) {
       toast.error('No transactions available for export in this period');
       return;
     }
 
-    const headers = ['ID', 'Date', 'Time', 'Type', 'Category', 'Person Name', 'Amount (PKR)', 'Notes'];
+    const headers = ['ID', 'Date', 'Time', 'Type', 'Category', 'Person Name', `Amount (${currency})`, 'Notes'];
     const rows = filteredTxns.map((t) => {
       const cat = getCategoryById(t.categoryId);
       return [
@@ -108,7 +125,7 @@ export default function ReportsPage() {
     toast.success('Excel Report exported successfully!');
   };
 
-  // Export PDF
+  // PDF Export
   const handleExportPDF = () => {
     if (filteredTxns.length === 0) {
       toast.error('No transactions available for export in this period');
@@ -129,7 +146,7 @@ export default function ReportsPage() {
           <td style="padding: 8px; border: 1px solid #ddd;">${t.type}</td>
           <td style="padding: 8px; border: 1px solid #ddd;">${cat?.name || t.categoryId}</td>
           <td style="padding: 8px; border: 1px solid #ddd;">${t.personName || '-'}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${currency} ${(t.amount / 100).toFixed(2)}</td>
+          <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${formatCurrency(t.amount / 100, currency)}</td>
         </tr>`;
       })
       .join('');
@@ -191,7 +208,7 @@ export default function ReportsPage() {
     ];
   }, [income, expense, given, received]);
 
-  // Category breakdown pie chart (expenses only)
+  // Category breakdown pie chart
   const pieData = useMemo(() => {
     const catMap: Record<string, number> = {};
     filteredTxns
@@ -329,7 +346,7 @@ export default function ReportsPage() {
                     borderRadius: '12px',
                     fontSize: '12px',
                   }}
-                  formatter={(value) => [`PKR ${Number(value).toLocaleString()}`, '']}
+                  formatter={(value) => [formatCurrency(Number(value), currency), '']}
                 />
                 <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
                   {barData.map((entry, i) => (
@@ -375,7 +392,7 @@ export default function ReportsPage() {
                     borderRadius: '12px',
                     fontSize: '12px',
                   }}
-                  formatter={(value) => [`PKR ${Number(value).toLocaleString()}`, '']}
+                  formatter={(value) => [formatCurrency(Number(value), currency), '']}
                 />
                 <Legend
                   verticalAlign="bottom"

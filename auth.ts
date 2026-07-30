@@ -1,6 +1,12 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
+declare module "next-auth" {
+  interface Session {
+    accessToken?: string;
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Google({
@@ -25,7 +31,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
-        (session as any).accessToken = token.accessToken;
+        session.accessToken = token.accessToken as string | undefined;
       }
       return session;
     },
@@ -35,4 +41,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dailyledger_production_secure_jwt_secret_key_32chars",
 });
-

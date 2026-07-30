@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
-    value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://www.googleapis.com https://accounts.google.com; frame-src 'self' https://accounts.google.com;",
+    value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://www.googleapis.com https://accounts.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
   },
   {
     key: "X-DNS-Prefetch-Control",
@@ -28,10 +28,6 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()",
-  },
-  {
-    key: "X-XSS-Protection",
-    value: "1; mode=block",
   },
 ];
 

@@ -3,7 +3,7 @@
 // Date utility helpers
 // ============================================================
 
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 
 export function todayISO(): string {
   return format(new Date(), 'yyyy-MM-dd');

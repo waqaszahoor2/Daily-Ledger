@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Eye, EyeOff,
-  Plus, Minus, ArrowLeftRight, Users, ChevronRight, Search, Calendar,
+  Plus, Minus, ArrowLeftRight, Users, ChevronRight,
   Lock, Clock, Sun, Moon
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -12,7 +12,7 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useDebts } from '@/hooks/useDebts';
 import { formatMoney } from '@/lib/utils/money';
 import { formatDate } from '@/lib/utils/dates';
-import { getCategoryById, DEFAULT_CATEGORIES } from '@/config/categories';
+import { getCategoryById } from '@/config/categories';
 import { useAppStore } from '@/store/useAppStore';
 import { TransactionModal } from '@/components/transactions/TransactionModal';
 import Link from 'next/link';
@@ -220,7 +220,7 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* Debt Reminders Card (Matching Reference Design) */}
+      {/* Debt Reminders Card */}
       {pendingDebts.length > 0 && (
         <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={4.5} className="glass-card p-4">
           <div className="flex items-center justify-between mb-3">

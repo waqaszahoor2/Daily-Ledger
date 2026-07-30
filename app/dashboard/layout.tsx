@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -24,6 +24,10 @@ const navItems = [
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -33,19 +37,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const setShowDrivePopup = useAppStore((s) => s.setShowDrivePopup);
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
-  const { isOnline, syncing } = useDriveSync();
+  const { syncing } = useDriveSync();
 
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
+  const [user] = useState<{ name: string; email: string } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem('dl_user');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {}
+    }
+    return null;
+  });
 
   useEffect(() => {
-    setMounted(true);
     const stored = localStorage.getItem('dl_user');
     if (!stored) {
       router.push('/login');
       return;
     }
-    setUser(JSON.parse(stored));
 
     const isFirst = localStorage.getItem('dl_first_login');
     if (isFirst === 'true') {

@@ -1,10 +1,10 @@
 {
-  "name": "DailyLedger - Privacy First Personal Finance",
+  "name": "DailyLedger — Personal Finance",
   "short_name": "DailyLedger",
-  "description": "Privacy-first personal finance app. Stored on your device, backed up to your Google Drive.",
+  "description": "Private, local-first personal financial ledger with encrypted backup",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#090d16",
+  "background_color": "#ffffff",
   "theme_color": "#1a5c2e",
   "icons": [
     {

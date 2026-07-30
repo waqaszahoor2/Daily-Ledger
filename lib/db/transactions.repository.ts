@@ -1,12 +1,12 @@
 // ============================================================
 // DailyLedger — lib/db/transactions.repository.ts
-// Repository pattern for transaction CRUD
+// Repository pattern for transaction CRUD with isolated DB and atomic restore
 // ============================================================
 
 import { getDB, getCurrentUserId } from './dexie';
-import type { Transaction, TransactionType, DashboardMetrics } from '@/types';
-import { toMinorUnits, fromMinorUnits } from '@/lib/utils/money';
+import type { Transaction, TransactionType, DashboardMetrics, PersonBalance } from '@/types';
 import { generateId } from '@/lib/utils/id';
+import { calculateDashboardMetrics, calculatePersonBalances } from '@/lib/domain/ledger';
 
 export class TransactionRepository {
   private get db() {
@@ -96,55 +96,57 @@ export class TransactionRepository {
     } else {
       txns = await this.getAll();
     }
-
-    const totalIncome    = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const totalExpense   = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const totalGiven     = txns.filter(t => t.type === 'money_given').reduce((s, t) => s + t.amount, 0);
-    const totalReceived  = txns.filter(t => t.type === 'money_received').reduce((s, t) => s + t.amount, 0);
-    const balance = totalIncome + totalReceived - totalExpense - totalGiven;
-
-    return {
-      totalIncome,
-      totalExpense,
-      totalGiven,
-      totalReceived,
-      balance,
-      period: startDate ? 'month' : 'all',
-    };
+    return calculateDashboardMetrics(txns, startDate ? 'month' : 'all');
   }
 
-  async getPersonBalances(): Promise<import('@/types').PersonBalance[]> {
+  async getPersonBalances(): Promise<PersonBalance[]> {
     const all = await this.getAll();
-    const map: Record<string, { totalGiven: number; totalReceived: number; count: number; lastDate: string }> = {};
+    return calculatePersonBalances(all);
+  }
 
-    for (const t of all) {
-      if (!t.personName || !t.personName.trim()) continue;
-      const name = t.personName.trim();
+  /**
+   * H-03: Atomic backup restore with validation & automatic rollback snapshot
+   */
+  async atomicRestore(newTransactions: Transaction[], newSettings?: Array<{ key: string; value: unknown }>): Promise<void> {
+    const db = this.db;
 
-      if (!map[name]) {
-        map[name] = { totalGiven: 0, totalReceived: 0, count: 0, lastDate: t.date };
-      }
-
-      map[name].count += 1;
-      if (t.date > map[name].lastDate) {
-        map[name].lastDate = t.date;
-      }
-
-      if (t.type === 'money_given') {
-        map[name].totalGiven += t.amount;
-      } else if (t.type === 'money_received') {
-        map[name].totalReceived += t.amount;
+    // 1. Pre-validation
+    if (!Array.isArray(newTransactions)) {
+      throw new Error('Invalid backup: transactions array required');
+    }
+    for (const tx of newTransactions) {
+      if (!tx.id || typeof tx.amount !== 'number' || !tx.type || !tx.date) {
+        throw new Error('Invalid backup entity schema structure');
       }
     }
 
-    return Object.entries(map).map(([personName, data]) => ({
-      personName,
-      totalGiven: data.totalGiven,
-      totalReceived: data.totalReceived,
-      netBalance: data.totalGiven - data.totalReceived,
-      transactionCount: data.count,
-      lastTransactionDate: data.lastDate,
-    }));
+    // 2. Snapshot current data for rollback safety
+    const currentTxns = await db.transactions.toArray();
+    const currentSettings = await db.settings.toArray();
+
+    try {
+      // 3. Atomic replace inside one transaction block
+      await db.transaction('rw', [db.transactions, db.settings], async () => {
+        await db.transactions.clear();
+        await db.settings.clear();
+
+        if (newTransactions.length > 0) {
+          await db.transactions.bulkAdd(newTransactions);
+        }
+        if (newSettings && newSettings.length > 0) {
+          await db.settings.bulkAdd(newSettings);
+        }
+      });
+    } catch (err) {
+      // 4. Rollback to snapshot if failure occurs
+      await db.transaction('rw', [db.transactions, db.settings], async () => {
+        await db.transactions.clear();
+        await db.settings.clear();
+        if (currentTxns.length > 0) await db.transactions.bulkAdd(currentTxns);
+        if (currentSettings.length > 0) await db.settings.bulkAdd(currentSettings);
+      });
+      throw new Error(`Restore failed and rolled back safely: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }
 

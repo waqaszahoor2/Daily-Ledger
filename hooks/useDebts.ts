@@ -16,7 +16,6 @@ export function useDebts() {
   const refreshKey = useAppStore((s) => s.refreshKey);
 
   const fetchDebts = useCallback(async () => {
-    setLoading(true);
     try {
       const data = await txRepo.getPersonBalances();
       setPersonBalances(data);
@@ -28,8 +27,16 @@ export function useDebts() {
   }, []);
 
   useEffect(() => {
-    fetchDebts();
-  }, [fetchDebts, refreshKey]);
+    let isMounted = true;
+    txRepo.getPersonBalances().then((data) => {
+      if (!isMounted) return;
+      setPersonBalances(data);
+      setLoading(false);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshKey]);
 
   // Overall totals
   const totalOutstandingLent = personBalances

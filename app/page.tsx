@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, Zap, Wifi, WifiOff, Menu, X } from 'lucide-react';
+import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, WifiOff, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -106,7 +106,7 @@ export default function LandingPage() {
               </motion.div>
             </motion.div>
 
-            {/* Hero Card — Dashboard Preview matching reference */}
+            {/* Hero Card */}
             <motion.div
               initial={{ opacity: 0, x: 50, rotate: 1 }}
               animate={{ opacity: 1, x: 0, rotate: 0 }}

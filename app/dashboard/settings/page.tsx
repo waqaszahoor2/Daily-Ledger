@@ -1,33 +1,38 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useSyncExternalStore } from 'react';
 import {
   User, Cloud, Download, Upload, Sun, Moon, Monitor, LogOut,
-  Shield, ChevronRight, AlertTriangle, CheckCircle2, Trash2
+  Shield, AlertTriangle, CheckCircle2, Trash2
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
-import { setSetting, getDB, getAppSettings } from '@/lib/db/dexie';
+import { getDB } from '@/lib/db/dexie';
 import { encryptData, decryptData } from '@/lib/encryption/crypto';
 import { toast } from 'sonner';
+
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 export default function SettingsPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const settings = useAppStore((s) => s.settings);
-  const setSettings = useAppStore((s) => s.setSettings);
   const setShowDrivePopup = useAppStore((s) => s.setShowDrivePopup);
 
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
+  const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
+  const [user] = useState<{ name: string; email: string } | null>(() => {
+    if (typeof window === 'undefined') return null;
     const stored = localStorage.getItem('dl_user');
-    if (stored) setUser(JSON.parse(stored));
-  }, []);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {}
+    }
+    return null;
+  });
 
   const handleLogout = () => {
     localStorage.removeItem('dl_user');
@@ -80,7 +85,7 @@ export default function SettingsPage() {
       if (!file) return;
 
       try {
-        let data: { transactions?: unknown[]; settings?: unknown[] };
+        let data: { transactions?: Array<import('@/types').Transaction>; settings?: Array<{ key: string; value: unknown }> };
 
         if (file.name.endsWith('.dlb')) {
           const password = prompt('Enter your backup password:');
@@ -105,10 +110,10 @@ export default function SettingsPage() {
           await db.transactions.clear();
           await db.settings.clear();
           if (data.transactions && data.transactions.length > 0) {
-            await db.transactions.bulkAdd(data.transactions as any);
+            await db.transactions.bulkAdd(data.transactions);
           }
           if (data.settings && data.settings.length > 0) {
-            await db.settings.bulkAdd(data.settings as any);
+            await db.settings.bulkAdd(data.settings);
           }
         });
 

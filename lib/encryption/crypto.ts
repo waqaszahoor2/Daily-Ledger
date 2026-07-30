@@ -1,6 +1,6 @@
 // ============================================================
 // DailyLedger — lib/encryption/crypto.ts
-// AES-256-GCM encryption with PBKDF2 key derivation
+// AES-256-GCM encryption with Web Crypto CSPRNG key derivation
 // ============================================================
 
 const SALT_BYTES = 16;
@@ -23,6 +23,16 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
     false,
     ['encrypt', 'decrypt']
   );
+}
+
+export function generateSecureRecoveryKey(): string {
+  if (typeof window === 'undefined' || !window.crypto) {
+    return `DL-RECOVERY-KEY-${Date.now()}`;
+  }
+  const randBuffer = new Uint8Array(16);
+  window.crypto.getRandomValues(randBuffer);
+  const hex = Array.from(randBuffer, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `DL-KEY-${hex.slice(0, 8)}-${hex.slice(8, 16)}-${hex.slice(16, 24)}-${hex.slice(24, 32)}`.toUpperCase();
 }
 
 export async function encryptData(plainText: string, password: string): Promise<ArrayBuffer> {

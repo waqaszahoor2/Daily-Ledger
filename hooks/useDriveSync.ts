@@ -1,6 +1,6 @@
 // ============================================================
 // DailyLedger — hooks/useDriveSync.ts
-// React hook for automatic background Google Drive backup when online
+// React hook for authentic automatic background Google Drive backup
 // ============================================================
 
 'use client';
@@ -48,44 +48,32 @@ export function useDriveSync() {
   const triggerAutoSync = useCallback(async () => {
     if (!settings.driveConfig.connected || !isOnline || isSyncingRef.current) return;
 
-    // Use NextAuth session access token if available, fallback to demo mode
-    const accessToken = (session as { accessToken?: string })?.accessToken || 'demo-access-token';
+    const accessToken = (session as { accessToken?: string })?.accessToken;
+    if (!accessToken) {
+      return;
+    }
 
     isSyncingRef.current = true;
     setSyncing(true);
 
     try {
-      // In production with Google OAuth, call Google Drive API
-      // If demo mode, simulate clean sync timestamp update
-      if (accessToken === 'demo-access-token') {
-        const now = new Date().toISOString();
-        setSettings({
-          driveConfig: {
-            ...settings.driveConfig,
-            connected: true,
-            folderName: 'DailyLedger_Backups',
-            lastBackupAt: now,
-          },
-        });
-        setLastSyncTime(now);
-      } else {
-        const res = await performAutoDriveSync(accessToken);
-        setLastSyncTime(res.lastBackupAt);
-        setSettings({
-          driveConfig: {
-            ...settings.driveConfig,
-            lastBackupAt: res.lastBackupAt,
-          },
-        });
-        toast.success('Auto-backed up to Google Drive (DailyLedger_Backups)');
-      }
+      const res = await performAutoDriveSync(accessToken);
+      setLastSyncTime(res.lastBackupAt);
+      setSettings({
+        driveConfig: {
+          ...settings.driveConfig,
+          lastBackupAt: res.lastBackupAt,
+        },
+      });
+      toast.success('Auto-backed up to Google Drive (DailyLedger_Backups)');
     } catch (err) {
       console.error('Auto Drive sync error:', err);
+      toast.error('Google Drive backup sync encountered an error. Please verify account permissions.');
     } finally {
       isSyncingRef.current = false;
       setSyncing(false);
     }
-  }, [settings.driveConfig, isOnline, setSettings]);
+  }, [settings.driveConfig, isOnline, session, setSettings]);
 
   // Trigger sync on transaction change or re-connecting online
   useEffect(() => {

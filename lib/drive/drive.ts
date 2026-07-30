@@ -1,10 +1,11 @@
 // ============================================================
 // DailyLedger — lib/drive/drive.ts
-// Google Drive API v3 helper for folder creation & encrypted backup upload
+// Authentic Google Drive API v3 helper for folder creation & encrypted backup
 // ============================================================
 
 import { getDB, getSetting, setSetting } from '@/lib/db/dexie';
-import { encryptData, decryptData } from '@/lib/encryption/crypto';
+import { encryptData, decryptData, generateSecureRecoveryKey } from '@/lib/encryption/crypto';
+import { txRepo } from '@/lib/db/transactions.repository';
 
 export const DRIVE_FOLDER_NAME = 'DailyLedger_Backups';
 
@@ -19,6 +20,10 @@ export interface DriveFileInfo {
  * Searches for or creates the "DailyLedger_Backups" folder in Google Drive.
  */
 export async function getOrCreateDriveFolder(accessToken: string): Promise<string> {
+  if (!accessToken || accessToken === 'demo-access-token') {
+    throw new Error('Valid Google Drive access token is required');
+  }
+
   // Search for existing folder
   const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`;
   const searchRes = await fetch(searchUrl, {
@@ -62,6 +67,10 @@ export async function uploadBackupToDrive(
   encryptedBuffer: ArrayBuffer,
   fileName: string
 ): Promise<DriveFileInfo> {
+  if (!accessToken || accessToken === 'demo-access-token') {
+    throw new Error('Valid Google Drive authorization is required for backups');
+  }
+
   const metadata = {
     name: fileName,
     parents: [folderId],
@@ -82,7 +91,8 @@ export async function uploadBackupToDrive(
   });
 
   if (!response.ok) {
-    throw new Error('Failed to upload backup file to Google Drive');
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Failed to upload backup file to Google Drive: ${response.status} ${errText}`);
   }
 
   return response.json();
@@ -92,6 +102,10 @@ export async function uploadBackupToDrive(
  * Lists all backup files in the DailyLedger_Backups folder.
  */
 export async function listDriveBackups(accessToken: string, folderId: string): Promise<DriveFileInfo[]> {
+  if (!accessToken || accessToken === 'demo-access-token') {
+    throw new Error('Valid Google Drive authorization is required');
+  }
+
   const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed=false&orderBy=createdTime desc&fields=files(id,name,createdTime,size)`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -106,24 +120,25 @@ export async function listDriveBackups(accessToken: string, folderId: string): P
 }
 
 /**
- * Gets or creates the auto-encryption passphrase for automatic drive backups.
+ * Gets or creates the CSPRNG encryption recovery passphrase for drive backups (H-02).
  */
 export async function getOrCreateDrivePassphrase(): Promise<string> {
   let pass = await getSetting<string>('drive_passphrase');
   if (!pass) {
-    const randBuffer = new Uint8Array(8);
-    crypto.getRandomValues(randBuffer);
-    const randHex = Array.from(randBuffer, (b) => b.toString(16).padStart(2, '0')).join('');
-    pass = `DL-${randHex}-${Date.now()}`;
+    pass = generateSecureRecoveryKey();
     await setSetting('drive_passphrase', pass);
   }
   return pass;
 }
 
 /**
- * Performs a complete automatic encrypted sync of local IndexedDB data to Google Drive.
+ * Performs authentic encrypted sync of local IndexedDB data to Google Drive.
  */
 export async function performAutoDriveSync(accessToken: string): Promise<{ fileId: string; lastBackupAt: string }> {
+  if (!accessToken || accessToken === 'demo-access-token') {
+    throw new Error('Google Drive account is not connected. Please connect Google Drive in Account settings.');
+  }
+
   const db = getDB();
   const allTxns = await db.transactions.toArray();
   const allSettings = await db.settings.toArray();
@@ -146,8 +161,8 @@ export async function performAutoDriveSync(accessToken: string): Promise<{ fileI
   const fileInfo = await uploadBackupToDrive(accessToken, folderId, encrypted, fileName);
 
   const nowISO = new Date().toISOString();
-  
-  // Save sync state locally
+
+  // Save sync state locally upon verified response
   const driveConfig = (await getSetting<Record<string, unknown>>('driveConfig')) || {};
   await setSetting('driveConfig', {
     ...driveConfig,
@@ -168,6 +183,10 @@ export async function performAutoDriveSync(accessToken: string): Promise<{ fileI
  * Downloads a raw binary backup file from Google Drive by file ID.
  */
 export async function downloadDriveFile(accessToken: string, fileId: string): Promise<ArrayBuffer> {
+  if (!accessToken || accessToken === 'demo-access-token') {
+    throw new Error('Valid Google Drive authorization is required to download backup');
+  }
+
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -196,23 +215,17 @@ export async function downloadAndDecryptDriveBackup(
     throw new Error('Invalid backup file schema structure');
   }
 
-  const db = getDB();
-  await db.transaction('rw', [db.transactions, db.settings], async () => {
-    await db.transactions.clear();
-    await db.settings.clear();
-    if (data.transactions && data.transactions.length > 0) {
-      await db.transactions.bulkAdd(data.transactions as any);
-    }
-    if (data.settings && data.settings.length > 0) {
-      await db.settings.bulkAdd(data.settings as any);
-    }
-  });
+  await txRepo.atomicRestore(data.transactions, data.settings);
 }
 
 /**
  * Deletes a file from Google Drive by file ID.
  */
 export async function deleteDriveBackupFile(accessToken: string, fileId: string): Promise<void> {
+  if (!accessToken || accessToken === 'demo-access-token') {
+    throw new Error('Valid Google Drive authorization is required to delete file');
+  }
+
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}`;
   const res = await fetch(url, {
     method: 'DELETE',
@@ -223,4 +236,3 @@ export async function deleteDriveBackupFile(accessToken: string, fileId: string)
     throw new Error('Failed to delete file from Google Drive');
   }
 }
-

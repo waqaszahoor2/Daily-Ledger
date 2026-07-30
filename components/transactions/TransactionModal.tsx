@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Plus, Minus, ArrowLeftRight, Users, Calculator, Check,
@@ -75,11 +75,11 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
     else setCategoryId('');
   };
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setEditingTx(null);
     setModalInitialData(null);
     setShow(false);
-  };
+  }, [setEditingTx, setModalInitialData, setShow]);
 
   const handleSave = async () => {
     const numAmt = parseFloat(amount);
@@ -138,7 +138,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleClose]);
 
   // Recent contact names for quick selection
   const recentPersons = personBalances.map((p) => p.personName).filter(Boolean);
@@ -187,7 +187,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
           </div>
 
           <div className="p-5 space-y-5 flex-1">
-            {/* Segmented Type Selector with Roman Urdu */}
+            {/* Segmented Type Selector */}
             <div className="p-1.5 rounded-2xl bg-surface-hover/80 border border-border/60 grid grid-cols-4 gap-1">
               {(Object.keys(typeConfig) as TransactionType[]).map((t) => {
                 const cfg = typeConfig[t];
@@ -252,7 +252,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                     <Calculator className="w-4 h-4 text-primary" /> Hisab Kitab (Repayment Calculator)
                   </span>
 
-                  {/* Mode Switcher: Minus (-) vs Plus (+) */}
+                  {/* Mode Switcher */}
                   <div className="p-0.5 rounded-lg bg-surface-hover border border-border flex items-center gap-0.5 text-[11px] font-semibold">
                     <button
                       type="button"
@@ -363,7 +363,7 @@ export function TransactionModal({ defaultType = 'expense' }: { defaultType?: Tr
                     animate={{ opacity: 1, y: 0 }}
                     className="p-3.5 rounded-xl bg-surface-hover/70 border border-primary/25 space-y-2.5"
                   >
-                    {/* Visual Progress Split Bar for Subtract */}
+                    {/* Visual Progress Split Bar */}
                     {calcMode === 'subtract' && numAmount > 0 && (
                       <div className="space-y-1">
                         <div className="flex justify-between text-[11px] font-medium text-muted">

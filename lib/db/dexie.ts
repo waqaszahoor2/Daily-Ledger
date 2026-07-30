@@ -1,6 +1,6 @@
 // ============================================================
 // DailyLedger — lib/db/dexie.ts
-// IndexedDB schema using Dexie.js
+// Partitioned IndexedDB schema per authenticated user subject ID
 // ============================================================
 
 import Dexie, { type EntityTable } from 'dexie';
@@ -10,8 +10,8 @@ class DailyLedgerDB extends Dexie {
   transactions!: EntityTable<Transaction, 'id'>;
   settings!: EntityTable<{ key: string; value: unknown }, 'key'>;
 
-  constructor() {
-    super('dailyledger-db');
+  constructor(dbName: string) {
+    super(dbName);
 
     this.version(1).stores({
       transactions: 'id, userId, type, date, categoryId, createdAt',
@@ -33,17 +33,30 @@ export function getCurrentUserId(): string {
   return 'guest_user';
 }
 
-// Singleton instance
-let _db: DailyLedgerDB | null = null;
+// Map of open database instances per user ID
+const _dbMap = new Map<string, DailyLedgerDB>();
 
 export function getDB(): DailyLedgerDB {
   if (typeof window === 'undefined') {
     throw new Error('IndexedDB is only available in the browser');
   }
-  if (!_db) {
-    _db = new DailyLedgerDB();
+  const userId = getCurrentUserId();
+  const dbName = `dailyledger-db-${userId}`;
+
+  if (!_dbMap.has(userId)) {
+    const db = new DailyLedgerDB(dbName);
+    _dbMap.set(userId, db);
   }
-  return _db;
+  return _dbMap.get(userId)!;
+}
+
+export async function closeAndLockUserDB(): Promise<void> {
+  for (const [userId, db] of _dbMap.entries()) {
+    try {
+      db.close();
+    } catch {}
+    _dbMap.delete(userId);
+  }
 }
 
 // ── Settings helpers ─────────────────────────────────────

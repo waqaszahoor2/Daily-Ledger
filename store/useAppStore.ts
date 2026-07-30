@@ -4,7 +4,7 @@
 // ============================================================
 
 import { create } from 'zustand';
-import type { Transaction, AppSettings, DashboardMetrics } from '@/types';
+import type { Transaction, AppSettings } from '@/types';
 
 interface AppState {
   // UI state

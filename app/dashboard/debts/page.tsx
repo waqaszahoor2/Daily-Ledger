@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, ArrowDownRight, ArrowUpRight, CheckCircle2, ChevronRight, Search, HandCoins } from 'lucide-react';
+import { Plus, ArrowDownRight, ArrowUpRight, CheckCircle2, Search, HandCoins } from 'lucide-react';
 import { useDebts } from '@/hooks/useDebts';
 import { useAppStore } from '@/store/useAppStore';
 import { formatMoney } from '@/lib/utils/money';
@@ -55,7 +55,7 @@ export default function DebtsPage() {
             setModalInitialData({ type: 'money_given', categoryId: 'lent' });
             setShowModal(true);
           }}
-          className="btn-primary"
+          className="btn-primary cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Give Money
         </button>
@@ -125,7 +125,7 @@ export default function DebtsPage() {
                   setModalInitialData({ type: 'money_given', categoryId: 'lent' });
                   setShowModal(true);
                 }}
-                className="btn-primary text-sm"
+                className="btn-primary text-sm cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> Add First Debt Entry
               </button>
@@ -206,13 +206,13 @@ export default function DebtsPage() {
                 <div className="flex flex-wrap gap-2 pt-1 border-t border-border/50">
                   <button
                     onClick={() => handleRecordRepayment(person.personName, person.netBalance)}
-                    className="btn-primary flex-1 py-2 text-xs"
+                    className="btn-primary flex-1 py-2 text-xs cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> {owesYou ? 'Record Repayment (Received)' : 'Record Payment (Pay Back)'}
                   </button>
                   <button
                     onClick={() => handleLendMore(person.personName)}
-                    className="btn-secondary flex-1 py-2 text-xs"
+                    className="btn-secondary flex-1 py-2 text-xs cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> Give More Money
                   </button>

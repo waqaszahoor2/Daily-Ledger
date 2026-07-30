@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Filter, Plus, Trash2, Pencil, ArrowUpRight, ArrowDownRight, ChevronDown } from 'lucide-react';
+import { Search, Filter, Plus, Trash2, Pencil, ChevronDown } from 'lucide-react';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useAppStore } from '@/store/useAppStore';
 import { getCategoryById } from '@/config/categories';
@@ -60,7 +60,7 @@ export default function TransactionsPage() {
           <h2 className="text-2xl font-bold text-foreground">Transactions</h2>
           <p className="text-sm text-muted mt-1">{transactions.length} total records</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary">
+        <button onClick={() => setShowModal(true)} className="btn-primary cursor-pointer">
           <Plus className="w-4 h-4" /> Add New
         </button>
       </div>
@@ -107,7 +107,7 @@ export default function TransactionsPage() {
               {searchQuery ? 'Try a different search term' : 'Start recording your daily finances'}
             </p>
             {!searchQuery && (
-              <button onClick={() => setShowModal(true)} className="btn-primary text-sm">
+              <button onClick={() => setShowModal(true)} className="btn-primary text-sm cursor-pointer">
                 <Plus className="w-4 h-4" /> Add First Transaction
               </button>
             )}
@@ -141,7 +141,7 @@ export default function TransactionsPage() {
                   <p className="text-xs text-muted">{formatDate(tx.date)}</p>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleEdit(tx)} className="p-2 rounded-lg hover:bg-primary/10 text-muted hover:text-primary transition">
+                  <button onClick={() => handleEdit(tx)} className="p-2 rounded-lg hover:bg-primary/10 text-muted hover:text-primary transition cursor-pointer">
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button onClick={() => handleDelete(tx)} aria-label="Delete transaction" className="p-2 rounded-lg hover:bg-danger/10 text-muted hover:text-danger transition cursor-pointer">

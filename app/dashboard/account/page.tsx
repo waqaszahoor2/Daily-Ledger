@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import {
-  User, Mail, ShieldCheck, Cloud, HardDrive, Database, Clock,
+  User, Mail, ShieldCheck, Cloud, Database, Clock,
   Folder, CheckCircle2, AlertTriangle, RefreshCw, LogOut, Key,
   Copy, Download, Trash2, ShieldAlert
 } from 'lucide-react';
@@ -11,7 +11,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
 import { useDriveSync } from '@/hooks/useDriveSync';
-import { setSetting } from '@/lib/db/dexie';
+import { setSetting, closeAndLockUserDB } from '@/lib/db/dexie';
 import {
   getOrCreateDrivePassphrase,
   listDriveBackups,
@@ -21,6 +21,10 @@ import {
 } from '@/lib/drive/drive';
 import { toast } from 'sonner';
 
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export default function AccountPage() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -29,34 +33,39 @@ export default function AccountPage() {
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
   const { syncing, lastSyncTime, triggerAutoSync } = useDriveSync();
 
-  const [user, setUser] = useState<{ id?: string; name: string; email: string; provider?: string } | null>(null);
+  const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
+  const [user, setUser] = useState<{ id?: string; name: string; email: string; provider?: string } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem('dl_user');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return {
+          ...parsed,
+          provider: parsed.provider === 'google' ? 'Google OAuth 2.0' : 'Email Authentication',
+        };
+      } catch {}
+    }
+    return null;
+  });
+
   const [storageEstimate, setStorageEstimate] = useState<{ usageKB: number; quotaMB: number } | null>(null);
   const [passphrase, setPassphrase] = useState<string>('');
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [remoteFiles, setRemoteFiles] = useState<DriveFileInfo[]>([]);
   const [loadingRemoteFiles, setLoadingRemoteFiles] = useState(false);
   const [actionFileId, setActionFileId] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     if (session?.user) {
-      setUser({
-        name: session.user.name || 'User',
-        email: session.user.email || '',
-        provider: 'Google OAuth 2.0',
+      const u = session.user;
+      queueMicrotask(() => {
+        setUser({
+          name: u.name || 'User',
+          email: u.email || '',
+          provider: 'Google OAuth 2.0',
+        });
       });
-    } else {
-      const stored = localStorage.getItem('dl_user');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setUser({
-            ...parsed,
-            provider: parsed.provider === 'google' ? 'Google OAuth 2.0' : 'Email Authentication',
-          });
-        } catch {}
-      }
     }
 
     // Estimate local storage usage
@@ -79,32 +88,19 @@ export default function AccountPage() {
   };
 
   const handleFetchRemoteBackups = async () => {
-    const accessToken = (session as { accessToken?: string })?.accessToken || 'demo-access-token';
+    const accessToken = (session as { accessToken?: string })?.accessToken;
     const folderId = settings.driveConfig.folderId;
 
-    if (!settings.driveConfig.connected || !folderId) {
-      toast.error('Google Drive is not connected yet.');
+    if (!settings.driveConfig.connected || !folderId || !accessToken) {
+      toast.error('Google Drive is not connected with an active OAuth session.');
       return;
     }
 
     setLoadingRemoteFiles(true);
     try {
-      if (accessToken === 'demo-access-token') {
-        // Demo remote files simulation if offline / demo token
-        setRemoteFiles([
-          {
-            id: 'demo-file-1',
-            name: `dailyledger_autobackup_${new Date().toISOString().slice(0, 10)}.dlb`,
-            createdTime: new Date().toISOString(),
-            size: '14520',
-          },
-        ]);
-        toast.info('Fetched remote Drive backup snapshot');
-      } else {
-        const files = await listDriveBackups(accessToken, folderId);
-        setRemoteFiles(files);
-        toast.success(`Found ${files.length} remote backup file(s) in Google Drive`);
-      }
+      const files = await listDriveBackups(accessToken, folderId);
+      setRemoteFiles(files);
+      toast.success(`Found ${files.length} remote backup file(s) in Google Drive`);
     } catch (err) {
       console.error('Fetch remote backups error:', err);
       toast.error('Failed to list backup files from Google Drive');
@@ -117,17 +113,17 @@ export default function AccountPage() {
     const pass = prompt('Enter your encryption passphrase to restore this Drive backup:', passphrase);
     if (!pass) return;
 
-    const accessToken = (session as { accessToken?: string })?.accessToken || 'demo-access-token';
+    const accessToken = (session as { accessToken?: string })?.accessToken;
+    if (!accessToken) {
+      toast.error('Active Google Drive authorization required to download backup.');
+      return;
+    }
     setActionFileId(file.id);
 
     try {
-      if (accessToken === 'demo-access-token') {
-        toast.success(`Demo Restore simulated for ${file.name}`);
-      } else {
-        await downloadAndDecryptDriveBackup(accessToken, file.id, pass);
-        triggerRefresh();
-        toast.success('Successfully restored financial data from Google Drive!');
-      }
+      await downloadAndDecryptDriveBackup(accessToken, file.id, pass);
+      triggerRefresh();
+      toast.success('Successfully restored financial data from Google Drive!');
     } catch (err) {
       console.error('Remote Drive restore error:', err);
       toast.error('Failed to restore from Drive. Incorrect passphrase or corrupted backup file.');
@@ -139,18 +135,17 @@ export default function AccountPage() {
   const handleDeleteRemoteBackup = async (fileId: string) => {
     if (!confirm('Delete this backup file permanently from your Google Drive?')) return;
 
-    const accessToken = (session as { accessToken?: string })?.accessToken || 'demo-access-token';
+    const accessToken = (session as { accessToken?: string })?.accessToken;
+    if (!accessToken) {
+      toast.error('Active Google Drive authorization required.');
+      return;
+    }
     setActionFileId(fileId);
 
     try {
-      if (accessToken === 'demo-access-token') {
-        setRemoteFiles((prev) => prev.filter((f) => f.id !== fileId));
-        toast.success('Backup file removed');
-      } else {
-        await deleteDriveBackupFile(accessToken, fileId);
-        setRemoteFiles((prev) => prev.filter((f) => f.id !== fileId));
-        toast.success('Backup file deleted from Google Drive');
-      }
+      await deleteDriveBackupFile(accessToken, fileId);
+      setRemoteFiles((prev) => prev.filter((f) => f.id !== fileId));
+      toast.success('Backup file deleted from Google Drive');
     } catch (err) {
       console.error('Delete remote backup error:', err);
       toast.error('Failed to delete file from Google Drive');
@@ -170,6 +165,7 @@ export default function AccountPage() {
 
   const handleSignOut = async () => {
     localStorage.removeItem('dl_user');
+    await closeAndLockUserDB();
     await signOut({ callbackUrl: '/' });
     toast.success('Signed out cleanly');
     router.push('/login');
@@ -181,7 +177,7 @@ export default function AccountPage() {
     <div className="page-container space-y-6 max-w-3xl">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-foreground">Account & Google Drive Mount System</h2>
+        <h2 className="text-2xl font-bold text-foreground">Account & Cloud Settings</h2>
         <p className="text-sm text-muted mt-1">Manage user identity, encryption keys, and Google Drive cloud backups</p>
       </div>
 
@@ -201,7 +197,7 @@ export default function AccountPage() {
               <Mail className="w-3.5 h-3.5" /> {user?.email || 'privacy@localdevice'}
             </p>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold border border-emerald-500/20">
-              <ShieldCheck className="w-3.5 h-3.5" /> {user?.provider || 'Privacy-First Anonymous'}
+              <ShieldCheck className="w-3.5 h-3.5" /> {user?.provider || 'Verified Account'}
             </div>
           </div>
         </div>
@@ -211,10 +207,10 @@ export default function AccountPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-            <Database className="w-4 h-4" /> Local IndexedDB Storage
+            <Database className="w-4 h-4" /> Partitioned Local Storage
           </div>
           <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-            AES-256 Client Encrypted
+            AES-256 Encrypted & Isolated
           </span>
         </div>
 
@@ -249,7 +245,7 @@ export default function AccountPage() {
         </div>
 
         <p className="text-xs text-muted leading-relaxed">
-          This 256-bit derived key encrypts your local ledger before uploading to Google Drive. Keep a copy in a safe place to restore your data on a new device.
+          This 256-bit derived CSPRNG key encrypts your local ledger before uploading to Google Drive. Keep a copy in a safe place to restore your data on a new device.
         </p>
 
         <div className="flex items-center gap-2">
@@ -280,7 +276,7 @@ export default function AccountPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-            <Cloud className="w-4 h-4" /> Google Drive Cloud Mount Status
+            <Cloud className="w-4 h-4" /> Google Drive Cloud Status
           </div>
           {settings.driveConfig.connected ? (
             <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
@@ -306,7 +302,7 @@ export default function AccountPage() {
 
             <div className="p-3.5 rounded-xl bg-surface-hover/50 border border-border">
               <span className="text-muted block flex items-center gap-1.5 mb-1">
-                <Clock className="w-3.5 h-3.5 text-primary" /> Last Auto Sync
+                <Clock className="w-3.5 h-3.5 text-primary" /> Last Verified Auto Sync
               </span>
               <span className="font-bold text-foreground text-sm">
                 {lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Not synced yet'}
