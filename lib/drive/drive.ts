@@ -4,10 +4,12 @@
 // ============================================================
 
 import { getDB, getSetting, setSetting } from '@/lib/db/dexie';
-import { encryptData, decryptData, generateSecureRecoveryKey } from '@/lib/encryption/crypto';
+import { encryptData, decryptData, createBackupEnvelope } from '@/lib/encryption/crypto';
+import { validateBackupPayload } from '@/lib/backup/schema';
 import { txRepo } from '@/lib/db/transactions.repository';
 
 export const DRIVE_FOLDER_NAME = 'DailyLedger_Backups';
+export const MAX_BACKUP_VERSIONS = 5;
 
 export interface DriveFileInfo {
   id: string;
@@ -99,7 +101,7 @@ export async function uploadBackupToDrive(
 }
 
 /**
- * Lists all backup files in the DailyLedger_Backups folder.
+ * Lists all backup files in the DailyLedger_Backups folder, ordered newest first.
  */
 export async function listDriveBackups(accessToken: string, folderId: string): Promise<DriveFileInfo[]> {
   if (!accessToken || accessToken === 'demo-access-token') {
@@ -120,49 +122,57 @@ export async function listDriveBackups(accessToken: string, folderId: string): P
 }
 
 /**
- * Gets or creates the CSPRNG encryption recovery passphrase for drive backups (H-02).
+ * Enforces 5-version backup retention in Google Drive.
+ * Deletes older backup files after a new backup has been successfully uploaded and verified.
  */
-export async function getOrCreateDrivePassphrase(): Promise<string> {
-  let pass = await getSetting<string>('drive_passphrase');
-  if (!pass) {
-    pass = generateSecureRecoveryKey();
-    await setSetting('drive_passphrase', pass);
+export async function enforceDriveBackupRetention(accessToken: string, folderId: string): Promise<void> {
+  try {
+    const backups = await listDriveBackups(accessToken, folderId);
+    if (backups.length > MAX_BACKUP_VERSIONS) {
+      const toDelete = backups.slice(MAX_BACKUP_VERSIONS);
+      for (const file of toDelete) {
+        await deleteDriveBackupFile(accessToken, file.id).catch((err) => {
+          console.warn(`Failed to prune old backup file ${file.id}:`, err);
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Backup retention cleanup encountered an error:', err);
   }
-  return pass;
 }
 
 /**
  * Performs authentic encrypted sync of local IndexedDB data to Google Drive.
+ * Requires user passphrase. No plaintext key is stored in IndexedDB.
  */
-export async function performAutoDriveSync(accessToken: string): Promise<{ fileId: string; lastBackupAt: string }> {
+export async function performAutoDriveSync(
+  accessToken: string,
+  passphrase: string
+): Promise<{ fileId: string; lastBackupAt: string; fileName: string; size?: string }> {
   if (!accessToken || accessToken === 'demo-access-token') {
     throw new Error('Google Drive account is not connected. Please connect Google Drive in Account settings.');
+  }
+  if (!passphrase || passphrase.trim().length < 12) {
+    throw new Error('Encryption passphrase must be at least 12 characters');
   }
 
   const db = getDB();
   const allTxns = await db.transactions.toArray();
   const allSettings = await db.settings.toArray();
 
-  const payload = JSON.stringify({
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    transactions: allTxns,
-    settings: allSettings,
-  });
-
-  const passphrase = await getOrCreateDrivePassphrase();
+  const payload = createBackupEnvelope(allTxns, allSettings);
   const encrypted = await encryptData(payload, passphrase);
 
-  // Get or create folder
+  // 1. Get or create folder
   const folderId = await getOrCreateDriveFolder(accessToken);
 
-  // Upload file
-  const fileName = `dailyledger_autobackup_${new Date().toISOString().replace(/[:.]/g, '-')}.dlb`;
+  // 2. Upload using timestamped filename
+  const fileName = `dailyledger_backup_${new Date().toISOString().replace(/[:.]/g, '-')}.dlb`;
   const fileInfo = await uploadBackupToDrive(accessToken, folderId, encrypted, fileName);
 
   const nowISO = new Date().toISOString();
 
-  // Save sync state locally upon verified response
+  // 3. Save sync state locally upon verified upload response
   const driveConfig = (await getSetting<Record<string, unknown>>('driveConfig')) || {};
   await setSetting('driveConfig', {
     ...driveConfig,
@@ -171,11 +181,18 @@ export async function performAutoDriveSync(accessToken: string): Promise<{ fileI
     folderName: DRIVE_FOLDER_NAME,
     lastBackupAt: nowISO,
     fileId: fileInfo.id,
+    lastFileName: fileName,
+    lastFileSize: fileInfo.size,
   });
+
+  // 4. Enforce retention (keep latest 5 versions, delete older) AFTER new backup is confirmed
+  await enforceDriveBackupRetention(accessToken, folderId);
 
   return {
     fileId: fileInfo.id,
     lastBackupAt: nowISO,
+    fileName,
+    size: fileInfo.size,
   };
 }
 
@@ -211,8 +228,9 @@ export async function downloadAndDecryptDriveBackup(
   const decrypted = await decryptData(buffer, passphrase);
   const data = JSON.parse(decrypted);
 
-  if (!data || typeof data !== 'object' || !Array.isArray(data.transactions)) {
-    throw new Error('Invalid backup file schema structure');
+  const validation = validateBackupPayload(data);
+  if (!validation.valid) {
+    throw new Error(`Backup validation failed: ${validation.issues.join('; ')}`);
   }
 
   await txRepo.atomicRestore(data.transactions, data.settings);

@@ -1,17 +1,21 @@
 // ============================================================
 // DailyLedger — lib/db/dexie.ts
-// Partitioned IndexedDB schema per authenticated user subject ID
+// Single unified IndexedDB database — no user-ID partitioning.
+// On first load, runMigrationIfNeeded() migrates any legacy
+// user-keyed databases into "dailyledger-db-local".
 // ============================================================
 
 import Dexie, { type EntityTable } from 'dexie';
 import type { Transaction, AppSettings } from '@/types';
 
+const UNIFIED_DB_NAME = 'dailyledger-db-local';
+
 class DailyLedgerDB extends Dexie {
   transactions!: EntityTable<Transaction, 'id'>;
   settings!: EntityTable<{ key: string; value: unknown }, 'key'>;
 
-  constructor(dbName: string) {
-    super(dbName);
+  constructor() {
+    super(UNIFIED_DB_NAME);
 
     this.version(1).stores({
       transactions: 'id, userId, type, date, categoryId, createdAt',
@@ -20,46 +24,34 @@ class DailyLedgerDB extends Dexie {
   }
 }
 
-export function getCurrentUserId(): string {
-  if (typeof window === 'undefined') return 'guest_user';
-  try {
-    const stored = localStorage.getItem('dl_user');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed.id) return parsed.id;
-      if (parsed.email) return `user_${btoa(parsed.email.toLowerCase()).replace(/=/g, '')}`;
-    }
-  } catch {}
-  return 'guest_user';
-}
-
-// Map of open database instances per user ID
-const _dbMap = new Map<string, DailyLedgerDB>();
+// Singleton instance
+let _db: DailyLedgerDB | null = null;
 
 export function getDB(): DailyLedgerDB {
   if (typeof window === 'undefined') {
     throw new Error('IndexedDB is only available in the browser');
   }
-  const userId = getCurrentUserId();
-  const dbName = `dailyledger-db-${userId}`;
-
-  if (!_dbMap.has(userId)) {
-    const db = new DailyLedgerDB(dbName);
-    _dbMap.set(userId, db);
+  if (!_db) {
+    _db = new DailyLedgerDB();
   }
-  return _dbMap.get(userId)!;
+  return _db;
 }
 
 export async function closeAndLockUserDB(): Promise<void> {
-  for (const [userId, db] of _dbMap.entries()) {
-    try {
-      db.close();
-    } catch {}
-    _dbMap.delete(userId);
+  if (_db) {
+    try { _db.close(); } catch { /* ignore */ }
+    _db = null;
   }
 }
 
-// ── Settings helpers ─────────────────────────────────────
+// ─── Legacy compat (getCurrentUserId no longer drives DB selection) ──────────
+
+/** @deprecated DB is no longer partitioned by user ID */
+export function getCurrentUserId(): string {
+  return 'local';
+}
+
+// ─── Settings helpers ─────────────────────────────────────────────────────────
 
 export async function getSetting<T>(key: string): Promise<T | undefined> {
   const db = getDB();

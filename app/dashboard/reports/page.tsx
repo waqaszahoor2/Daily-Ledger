@@ -1,9 +1,11 @@
+'use client';
+
 // ============================================================
 // DailyLedger — app/dashboard/reports/page.tsx
-// Financial analytics, yearly reporting, and safe CSV/Excel/PDF exports
+// Financial analytics, yearly reporting, and safe CSV/Excel/PDF exports.
+// PDF export uses jsPDF for real binary PDF generation (XSS-safe).
+// Excel export generates valid OOXML .xlsx files.
 // ============================================================
-
-'use client';
 
 import { useState, useMemo } from 'react';
 import { BarChart3, PieChart, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Download, FileSpreadsheet, FileText } from 'lucide-react';
@@ -14,6 +16,8 @@ import { formatMoney, fromMinorUnits } from '@/lib/utils/money';
 import { getMonthRange, getWeekRange, todayISO } from '@/lib/utils/dates';
 import { useAppStore } from '@/store/useAppStore';
 import { formatCurrency } from '@/lib/domain/ledger';
+import { generateXlsxBuffer } from '@/lib/utils/xlsx';
+import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import type { ReportPeriod } from '@/types';
 
@@ -29,6 +33,14 @@ function sanitizeCsvCell(val: string): string {
     return `"'${clean}"`;
   }
   return `"${clean}"`;
+}
+
+/**
+ * Sanitizes plain text input for PDF generation, removing null bytes or control characters
+ */
+function sanitizePlainText(val: string): string {
+  if (!val) return '';
+  return val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim();
 }
 
 export default function ReportsPage() {
@@ -90,105 +102,133 @@ export default function ReportsPage() {
     toast.success('CSV Report exported safely!');
   };
 
-  // Safe Excel Export
-  const handleExportExcel = () => {
+  // Safe Genuine Excel (.xlsx) Export
+  const handleExportExcel = async () => {
     if (filteredTxns.length === 0) {
       toast.error('No transactions available for export in this period');
       return;
     }
 
-    const headers = ['ID', 'Date', 'Time', 'Type', 'Category', 'Person Name', `Amount (${currency})`, 'Notes'];
-    const rows = filteredTxns.map((t) => {
-      const cat = getCategoryById(t.categoryId);
-      return [
-        t.id,
-        t.date,
-        t.time || '',
-        t.type,
-        cat?.name || t.categoryId,
-        t.personName || '',
-        (t.amount / 100).toFixed(2),
-        t.notes || '',
-      ].join('\t');
-    });
+    try {
+      const columns = [
+        { header: 'ID', key: 'id', type: 'string' as const },
+        { header: 'Date', key: 'date', type: 'string' as const },
+        { header: 'Time', key: 'time', type: 'string' as const },
+        { header: 'Type', key: 'type', type: 'string' as const },
+        { header: 'Category', key: 'category', type: 'string' as const },
+        { header: 'Person Name', key: 'personName', type: 'string' as const },
+        { header: `Amount (${currency})`, key: 'amount', type: 'number' as const },
+        { header: 'Notes', key: 'notes', type: 'string' as const },
+      ];
 
-    const content = [headers.join('\t'), ...rows].join('\n');
-    const blob = new Blob([content], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `dailyledger_report_${period}_${todayISO()}.xls`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast.success('Excel Report exported successfully!');
+      const rows = filteredTxns.map((t) => {
+        const cat = getCategoryById(t.categoryId);
+        return {
+          id: t.id,
+          date: t.date,
+          time: t.time || '',
+          type: t.type,
+          category: cat?.name || t.categoryId,
+          personName: t.personName || '',
+          amount: t.amount / 100,
+          notes: t.notes || '',
+        };
+      });
+
+      const buffer = await generateXlsxBuffer(columns, rows);
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `dailyledger_report_${period}_${todayISO()}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success('Excel (.xlsx) Report exported successfully!');
+    } catch (err) {
+      console.error('Excel export error:', err);
+      toast.error('Failed to generate Excel report');
+    }
   };
 
-  // PDF Export
+  // Safe Genuine Binary PDF Export (jsPDF — no innerHTML/XSS vulnerability)
   const handleExportPDF = () => {
     if (filteredTxns.length === 0) {
       toast.error('No transactions available for export in this period');
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast.error('Could not open print window. Please allow popups.');
-      return;
-    }
+    try {
+      const doc = new jsPDF();
 
-    const rowsHtml = filteredTxns
-      .map((t) => {
+      // Title & Header
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('DailyLedger Financial Report', 14, 20);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(
+        `Period: ${period.toUpperCase()}  |  Generated: ${new Date().toLocaleString()}`,
+        14,
+        28
+      );
+
+      // Table Header
+      let y = 40;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(0);
+
+      doc.text('Date', 14, y);
+      doc.text('Type', 42, y);
+      doc.text('Category', 75, y);
+      doc.text('Person / Notes', 115, y);
+      doc.text(`Amount (${currency})`, 195, y, { align: 'right' });
+
+      doc.setDrawColor(200);
+      doc.line(14, y + 2, 195, y + 2);
+      y += 8;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+
+      // Rows
+      filteredTxns.forEach((t) => {
+        if (y > 275) {
+          doc.addPage();
+          y = 20;
+        }
+
         const cat = getCategoryById(t.categoryId);
-        return `<tr>
-          <td style="padding: 8px; border: 1px solid #ddd;">${t.date}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${t.type}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${cat?.name || t.categoryId}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${t.personName || '-'}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${formatCurrency(t.amount / 100, currency)}</td>
-        </tr>`;
-      })
-      .join('');
+        const safeDate = sanitizePlainText(t.date);
+        const safeType = sanitizePlainText(t.type);
+        const safeCat = sanitizePlainText(cat?.name || t.categoryId);
+        const safePersonNotes = sanitizePlainText(
+          [t.personName, t.notes].filter(Boolean).join(' - ') || '-'
+        );
+        const safeAmount = (t.amount / 100).toFixed(2);
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>DailyLedger Financial Report - ${period.toUpperCase()}</title>
-          <style>
-            body { font-family: system-ui, sans-serif; padding: 24px; color: #111; }
-            h1 { font-size: 24px; margin-bottom: 4px; }
-            p { color: #555; font-size: 14px; margin-top: 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
-            th { background: #f3f4f6; text-align: left; padding: 10px; border: 1px solid #ddd; }
-          </style>
-        </head>
-        <body>
-          <h1>DailyLedger Financial Report</h1>
-          <p>Period: ${period.toUpperCase()} • Generated: ${new Date().toLocaleString()}</p>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Category</th>
-                <th>Person</th>
-                <th style="text-align: right;">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 500);
-    toast.success('PDF Print Report generated!');
+        doc.text(safeDate, 14, y);
+        doc.text(safeType, 42, y);
+        doc.text(safeCat.slice(0, 18), 75, y);
+        doc.text(safePersonNotes.slice(0, 35), 115, y);
+        doc.text(safeAmount, 195, y, { align: 'right' });
+
+        y += 6;
+      });
+
+      doc.save(`dailyledger_report_${period}_${todayISO()}.pdf`);
+      toast.success('Genuine PDF Report generated & downloaded!');
+    } catch (err) {
+      console.error('PDF export error:', err);
+      toast.error('Failed to generate PDF report');
+    }
   };
 
   // Summary metrics
@@ -233,7 +273,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Reports</h2>
-          <p className="text-sm text-muted mt-1">Financial analytics & insights</p>
+          <p className="text-sm text-muted mt-1">Financial analytics &amp; insights</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Export Action Buttons */}
@@ -248,16 +288,16 @@ export default function ReportsPage() {
             <button
               onClick={handleExportExcel}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-surface-hover text-foreground flex items-center gap-1.5 transition cursor-pointer"
-              title="Export report as Excel"
+              title="Export report as Excel (.xlsx)"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Excel
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Excel (.xlsx)
             </button>
             <button
               onClick={handleExportPDF}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-surface-hover text-foreground flex items-center gap-1.5 transition cursor-pointer"
-              title="Export report as PDF / Print"
+              title="Export report as genuine PDF"
             >
-              <FileText className="w-3.5 h-3.5 text-amber-500" /> PDF
+              <FileText className="w-3.5 h-3.5 text-amber-500" /> PDF (.pdf)
             </button>
           </div>
 

@@ -3,33 +3,31 @@
 // ============================================================
 // DailyLedger — app/dashboard/layout.tsx
 // Dashboard shell: sidebar nav, mobile drawer, topbar.
-// Auth guard uses useSession() as primary source of truth for
-// Google OAuth users, with localStorage fallback for email users.
+// Local-first application — works fully without an account.
+// Runs one-time migration on mount.
 // ============================================================
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, ArrowLeftRight, BarChart3, Settings, LogOut, Menu, X,
+  LayoutDashboard, ArrowLeftRight, BarChart3, Settings, Menu, X,
   Sun, Moon, Cloud, AlertTriangle, ChevronRight, Shield, HandCoins, RefreshCw, User
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
-import { useSession, signOut } from 'next-auth/react';
 import { GoogleDrivePopup } from '@/components/auth/GoogleDrivePopup';
 import { useAppStore } from '@/store/useAppStore';
 import { useDriveSync } from '@/hooks/useDriveSync';
 import { getAppSettings } from '@/lib/db/dexie';
-import { closeAndLockUserDB } from '@/lib/db/dexie';
-import { toast } from 'sonner';
+import { runMigrationIfNeeded } from '@/lib/db/migration';
+import { isTokenValid, getTokenEmail } from '@/lib/gis/tokenClient';
 
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/dashboard/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/dashboard/debts', label: 'Debts', icon: HandCoins },
   { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/dashboard/account', label: 'Account', icon: User },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -39,9 +37,7 @@ const getServerSnapshot = () => false;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const { data: session, status } = useSession();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const setShowDrivePopup = useAppStore((s) => s.setShowDrivePopup);
@@ -51,94 +47,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 
-  // Resolve the displayed user: prefer NextAuth session, fall back to localStorage
-  // (email-authenticated users store their identity in localStorage)
-  const user = (() => {
-    if (!mounted) return null;
-    // Google OAuth user
-    if (session?.user) {
-      return {
-        name: session.user.name || 'User',
-        email: session.user.email || '',
-      };
-    }
-    // Email-auth user (localStorage fallback)
-    try {
-      const stored = localStorage.getItem('dl_user');
-      if (stored) return JSON.parse(stored) as { name: string; email: string };
-    } catch { /* ignore */ }
-    return null;
-  })();
-
   useEffect(() => {
-    // Still loading session — do nothing yet
-    if (status === 'loading') return;
+    // Run one-time DB migration and load settings
+    runMigrationIfNeeded()
+      .then(() => getAppSettings())
+      .then((s) => setSettings(s))
+      .catch(() => {});
+  }, [setSettings]);
 
-    // Google OAuth authenticated
-    if (status === 'authenticated') {
-      // Save Google user identity to localStorage for cross-tab consistency
-      if (session?.user) {
-        localStorage.setItem('dl_user', JSON.stringify({
-          id: session.user.email,
-          name: session.user.name || 'User',
-          email: session.user.email || '',
-          provider: 'google',
-        }));
-      }
+  const hasToken = isTokenValid();
+  const tokenEmail = getTokenEmail();
 
-      // Auto-open Drive popup on first login
-      const isFirst = localStorage.getItem('dl_first_login');
-      if (isFirst === 'true') {
-        localStorage.removeItem('dl_first_login');
-        setShowDrivePopup(true);
-      }
-
-      getAppSettings().then((s) => setSettings(s)).catch(() => {});
-      return;
-    }
-
-    // Not authenticated by Google — check localStorage (email auth)
-    const stored = localStorage.getItem('dl_user');
-    if (!stored) {
-      router.push('/login');
-      return;
-    }
-
-    const isFirst = localStorage.getItem('dl_first_login');
-    if (isFirst === 'true') {
-      localStorage.removeItem('dl_first_login');
-      setShowDrivePopup(true);
-    }
-
-    getAppSettings().then((s) => setSettings(s)).catch(() => {});
-  }, [status, session, router, setShowDrivePopup, setSettings]);
-
-  const handleLogout = async () => {
-    localStorage.removeItem('dl_user');
-    localStorage.removeItem('dl_first_login');
-    await closeAndLockUserDB();
-
-    if (status === 'authenticated') {
-      await signOut({ callbackUrl: '/' });
-    } else {
-      toast.success('Logged out successfully');
-      router.push('/');
-    }
+  const displayUser = {
+    name: tokenEmail ? tokenEmail.split('@')[0] : 'Local Ledger',
+    email: tokenEmail || 'Stored on this device',
   };
 
-  // While session is resolving, show nothing (avoids flash of login redirect)
   if (!mounted) return null;
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex items-center gap-3 text-muted">
-          <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Loading session…</span>
-        </div>
-      </div>
-    );
-  }
-  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -194,16 +119,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-3 border-t border-border">
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-white font-semibold text-sm">
-              {user.name.charAt(0).toUpperCase()}
+              {displayUser.name.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-              <p className="text-xs text-muted truncate">{user.email}</p>
+              <p className="text-sm font-medium text-foreground truncate">{displayUser.name}</p>
+              <p className="text-xs text-muted truncate">{displayUser.email}</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 mt-1 rounded-xl text-sm text-muted hover:bg-surface-hover hover:text-danger transition-colors">
-            <LogOut className="w-4 h-4" /> Sign Out
-          </button>
         </div>
       </aside>
 
@@ -241,16 +163,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="p-3 border-t border-border">
                 <div className="flex items-center gap-3 px-3 py-2">
                   <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-white font-semibold text-sm">
-                    {user.name.charAt(0).toUpperCase()}
+                    {displayUser.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-                    <p className="text-xs text-muted truncate">{user.email}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{displayUser.name}</p>
+                    <p className="text-xs text-muted truncate">{displayUser.email}</p>
                   </div>
                 </div>
-                <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-muted hover:bg-surface-hover hover:text-danger">
-                  <LogOut className="w-4 h-4" /> Sign Out
-                </button>
               </div>
             </motion.aside>
           </>
@@ -279,7 +198,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <RefreshCw className="w-3 h-3 animate-spin" /> Syncing...
                     </span>
                   ) : (
-                    <span className="font-medium">Auto-Sync Active</span>
+                    <span className="font-medium">{hasToken ? 'Drive Connected' : 'Reconnection Required'}</span>
                   )}
                 </div>
               )}
@@ -290,7 +209,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-white font-semibold text-xs lg:hidden">
-                {user.name.charAt(0).toUpperCase()}
+                {displayUser.name.charAt(0).toUpperCase()}
               </div>
             </div>
           </div>

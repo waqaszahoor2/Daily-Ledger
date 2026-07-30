@@ -1,23 +1,25 @@
 // ============================================================
 // DailyLedger — hooks/useDriveSync.ts
-// React hook for authentic automatic background Google Drive backup.
-// Properly validates session token before attempting sync and
-// surfaces actionable error messages for expired/missing tokens.
+// Revision-based automatic background Google Drive backup hook.
+// Strictly prevents backup loops, uses 30s debounce, single-flight
+// upload lock, and reads access tokens ONLY from in-memory GIS.
 // ============================================================
 
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSession } from 'next-auth/react';
 import { useAppStore } from '@/store/useAppStore';
 import { performAutoDriveSync } from '@/lib/drive/drive';
+import { getAccessToken, isTokenValid, clearAccessToken } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 export function useDriveSync() {
-  const { data: session, status } = useSession();
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
-  const refreshKey = useAppStore((s) => s.refreshKey);
+  const dataRevision = useAppStore((s) => s.dataRevision);
+  const lastSyncedRevision = useAppStore((s) => s.lastSyncedRevision);
+  const markSynced = useAppStore((s) => s.markSynced);
+  const sessionPassphrase = useAppStore((s) => s.sessionPassphrase);
 
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -28,12 +30,13 @@ export function useDriveSync() {
   );
 
   const isSyncingRef = useRef(false);
+  const pendingFollowupRef = useRef(false);
 
   // Monitor online/offline status
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      toast.info('Reconnected to internet. Auto-sync active.');
+      toast.info('Reconnected to internet.');
     };
 
     const handleOffline = () => {
@@ -51,38 +54,38 @@ export function useDriveSync() {
   }, []);
 
   /**
-   * Trigger an authenticated Google Drive backup.
-   * Guards:
-   *  - Drive must be connected in settings
-   *  - Device must be online
-   *  - No sync already in progress
-   *  - NextAuth session must be authenticated with a valid accessToken
+   * Executes a single-flight backup to Google Drive.
    */
   const triggerAutoSync = useCallback(async () => {
-    if (!settings.driveConfig.connected || !isOnline || isSyncingRef.current) return;
+    if (!settings.driveConfig.connected || !isOnline) return;
 
-    // Validate session
-    if (status !== 'authenticated') {
-      // Session not ready yet — skip silently (will retry on next refreshKey)
+    if (isSyncingRef.current) {
+      // Mark that a data change occurred during an active upload
+      pendingFollowupRef.current = true;
       return;
     }
 
-    const accessToken = (session as { accessToken?: string })?.accessToken;
-
-    if (!accessToken) {
-      // Google session exists but token is missing/expired
-      toast.error(
-        'Google Drive token has expired. Please sign out and sign back in with Google to re-authorise Drive access.',
-        { duration: 6000 }
-      );
+    const token = getAccessToken();
+    if (!token || !isTokenValid()) {
+      // Token missing or expired — do not spam toasts unless backup is overdue
       return;
     }
+
+    if (!sessionPassphrase) {
+      // Passphrase locked for this session — backup cannot proceed until unlocked
+      return;
+    }
+
+    const targetRevision = dataRevision;
 
     isSyncingRef.current = true;
     setSyncing(true);
 
     try {
-      const res = await performAutoDriveSync(accessToken);
+      const res = await performAutoDriveSync(token, sessionPassphrase);
+
+      // Update sync markers (does NOT increment dataRevision, preventing loops)
+      markSynced(targetRevision);
       setLastSyncTime(res.lastBackupAt);
       setSettings({
         driveConfig: {
@@ -90,39 +93,58 @@ export function useDriveSync() {
           lastBackupAt: res.lastBackupAt,
         },
       });
+
       toast.success('Auto-backed up to Google Drive (DailyLedger_Backups)');
     } catch (err) {
       console.error('Auto Drive sync error:', err);
       const message = err instanceof Error ? err.message : String(err);
 
       if (message.includes('401') || message.includes('403') || message.includes('invalid_grant')) {
-        toast.error(
-          'Google Drive access revoked or expired. Please sign out and re-connect Google Drive.',
-          { duration: 8000 }
-        );
+        clearAccessToken();
+        toast.error('Google Drive access expired or revoked. Please reconnect in Settings.');
       } else {
-        toast.error('Google Drive backup failed. Check your internet connection and Drive permissions.');
+        toast.error(`Google Drive backup failed: ${message}`);
       }
     } finally {
       isSyncingRef.current = false;
       setSyncing(false);
-    }
-  }, [settings.driveConfig, isOnline, session, status, setSettings]);
 
-  // Trigger sync on transaction change or re-connecting online (2-second debounce)
-  useEffect(() => {
-    if (settings.driveConfig.connected && isOnline && status === 'authenticated') {
-      const timer = setTimeout(() => {
-        triggerAutoSync();
-      }, 2000);
-      return () => clearTimeout(timer);
+      // Handle follow-up if data changed during upload
+      if (pendingFollowupRef.current) {
+        pendingFollowupRef.current = false;
+        // Trigger exactly one follow-up after current upload completes
+        setTimeout(() => {
+          triggerAutoSync();
+        }, 1000);
+      }
     }
-  }, [refreshKey, isOnline, settings.driveConfig.connected, status, triggerAutoSync]);
+  }, [
+    settings.driveConfig.connected,
+    isOnline,
+    sessionPassphrase,
+    dataRevision,
+    markSynced,
+    setSettings,
+    settings.driveConfig,
+  ]);
+
+  // 30-second debounced trigger whenever dataRevision increases
+  useEffect(() => {
+    if (!settings.driveConfig.connected || !isOnline) return;
+    if (dataRevision <= lastSyncedRevision) return; // No pending changes
+
+    const timer = setTimeout(() => {
+      triggerAutoSync();
+    }, 30000); // 30-second debounce delay
+
+    return () => clearTimeout(timer);
+  }, [dataRevision, lastSyncedRevision, settings.driveConfig.connected, isOnline, triggerAutoSync]);
 
   return {
     isOnline,
     syncing,
     lastSyncTime,
+    hasPendingChanges: dataRevision > lastSyncedRevision,
     triggerAutoSync,
   };
 }

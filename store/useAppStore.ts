@@ -1,6 +1,6 @@
 // ============================================================
 // DailyLedger — store/useAppStore.ts
-// Zustand global state for UI & settings
+// Zustand global state for UI, settings, revisions, and session passphrase
 // ============================================================
 
 import { create } from 'zustand';
@@ -30,9 +30,19 @@ interface AppState {
   // Refresh trigger
   refreshKey: number;
   triggerRefresh: () => void;
+
+  // Sync Revision state (for loop prevention)
+  dataRevision: number;
+  lastSyncedRevision: number;
+  incrementDataRevision: () => void;
+  markSynced: (revision?: number) => void;
+
+  // In-memory backup passphrase (never persisted to storage)
+  sessionPassphrase: string | null;
+  setSessionPassphrase: (pass: string | null) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   
@@ -55,5 +65,19 @@ export const useAppStore = create<AppState>((set) => ({
   setModalInitialData: (data) => set({ modalInitialData: data }),
   
   refreshKey: 0,
-  triggerRefresh: () => set((s) => ({ refreshKey: s.refreshKey + 1 })),
+  triggerRefresh: () => {
+    const nextRev = get().dataRevision + 1;
+    set((s) => ({ refreshKey: s.refreshKey + 1, dataRevision: nextRev }));
+  },
+
+  dataRevision: 1,
+  lastSyncedRevision: 0,
+  incrementDataRevision: () => set((s) => ({ dataRevision: s.dataRevision + 1 })),
+  markSynced: (revision) =>
+    set((s) => ({
+      lastSyncedRevision: revision ?? s.dataRevision,
+    })),
+
+  sessionPassphrase: null,
+  setSessionPassphrase: (pass) => set({ sessionPassphrase: pass }),
 }));

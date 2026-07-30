@@ -1,5 +1,11 @@
 'use client';
 
+// ============================================================
+// DailyLedger — app/dashboard/page.tsx
+// Dashboard page for financial summary, quick actions, debt reminders,
+// and recent transactions.
+// ============================================================
+
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -80,9 +86,9 @@ export default function DashboardPage() {
             Live
           </div>
 
-          {/* Encrypted Local Storage Badge */}
+          {/* Corrected Storage Badge */}
           <span className="badge-encrypted">
-            <Lock className="w-3.5 h-3.5" /> Encrypted Local Storage
+            <Lock className="w-3.5 h-3.5" /> Local Storage (Backups Encrypted)
           </span>
         </div>
 
@@ -274,9 +280,9 @@ export default function DashboardPage() {
       <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={5} className="glass-card">
         <div className="flex items-center justify-between p-4 pb-2">
           <h3 className="section-title">Recent Transactions</h3>
-          <a href="/dashboard/transactions" className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
+          <Link href="/dashboard/transactions" className="text-xs font-medium text-primary flex items-center gap-1 hover:underline">
             View All <ChevronRight className="w-3.5 h-3.5" />
-          </a>
+          </Link>
         </div>
 
         {loading ? (

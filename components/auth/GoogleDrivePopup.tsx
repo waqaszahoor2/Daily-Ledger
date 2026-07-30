@@ -1,21 +1,18 @@
-'use client';
-
 // ============================================================
 // DailyLedger — components/auth/GoogleDrivePopup.tsx
-// Real Google Drive connection via OAuth session token.
-// The "Connect" button uses the existing NextAuth session's
-// accessToken to call the real Drive API and create/find the
-// DailyLedger_Backups folder. If no token is present, it
-// redirects to Google OAuth first.
+// Real Google Drive connection via Google Identity Services (GIS).
+// Uses memory-only token storage and creates/locates DailyLedger_Backups.
 // ============================================================
+
+'use client';
 
 import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw } from 'lucide-react';
-import { useSession, signIn } from 'next-auth/react';
+import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
 import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
+import { connectDrive, isTokenValid } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 const benefits = [
@@ -30,38 +27,34 @@ export function GoogleDrivePopup() {
   const show = useAppStore((s) => s.showDrivePopup);
   const setShow = useAppStore((s) => s.setShowDrivePopup);
   const setSettings = useAppStore((s) => s.setSettings);
-  const { data: session } = useSession();
 
   const [connecting, setConnecting] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
 
-  /**
-   * Real Drive connection:
-   * 1. If we already have a session.accessToken, call Drive API to
-   *    find-or-create the DailyLedger_Backups folder, then persist.
-   * 2. If no token, redirect to Google OAuth (which returns with token).
-   */
   const handleConnect = async () => {
-    const accessToken = (session as { accessToken?: string })?.accessToken;
+    setConfigError(null);
 
-    if (!accessToken) {
-      // No Google session — trigger OAuth flow. After sign-in the user
-      // returns to /dashboard where the popup will re-open if needed.
-      toast.info('Redirecting to Google Sign-In to authorize Drive access…');
-      await signIn('google', { callbackUrl: '/dashboard' });
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
+      const msg = 'Google Drive connection is not configured. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to the production environment.';
+      setConfigError(msg);
+      toast.error(msg);
       return;
     }
 
     setConnecting(true);
     try {
-      // Call the REAL Drive API — creates/finds DailyLedger_Backups folder
+      // 1. Trigger Google Identity Services OAuth popup (memory token)
+      const accessToken = await connectDrive();
+
+      // 2. Perform authentic Google Drive API request to locate/create backup folder
       const folderId = await getOrCreateDriveFolder(accessToken);
 
+      // 3. Save connection metadata
       const driveCfg = {
         connected: true,
         folderId,
         folderName: DRIVE_FOLDER_NAME,
-        // lastBackupAt intentionally NOT set here — it is set only after a
-        // successful backup upload in performAutoDriveSync.
       };
 
       setSettings({ driveConfig: driveCfg, driveSkipped: false });
@@ -72,7 +65,8 @@ export function GoogleDrivePopup() {
       setShow(false);
     } catch (err) {
       console.error('Drive connect error:', err);
-      toast.error('Failed to connect Google Drive. Please check your account permissions and try again.');
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`Drive connection failed: ${message}`);
     } finally {
       setConnecting(false);
     }
@@ -81,7 +75,7 @@ export function GoogleDrivePopup() {
   const handleSkip = useCallback(async () => {
     setSettings({ driveSkipped: true });
     await setSetting('driveSkipped', true);
-    toast.warning('Google Drive backup skipped. You can connect later from Account settings.');
+    toast.warning('Google Drive backup skipped. You can connect later from Settings.');
     setShow(false);
   }, [setSettings, setShow]);
 
@@ -94,7 +88,7 @@ export function GoogleDrivePopup() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [show, handleSkip]);
 
-  const hasGoogleSession = !!(session as { accessToken?: string })?.accessToken;
+  const hasToken = isTokenValid();
 
   return (
     <AnimatePresence>
@@ -131,25 +125,27 @@ export function GoogleDrivePopup() {
               <h2 id="drive-popup-title" className="text-xl sm:text-2xl font-bold text-foreground">
                 Connect Your Google Drive
               </h2>
-              {hasGoogleSession && (
+              {hasToken && (
                 <p className="text-xs text-emerald-500 font-medium">
-                  ✓ Google account authenticated — Drive access is ready to enable
+                  ✓ Active session — ready to link backup folder
                 </p>
               )}
             </div>
 
+            {configError && (
+              <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-danger font-medium leading-relaxed">
+                  {configError}
+                </p>
+              </div>
+            )}
+
             {/* Description */}
             <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm text-muted leading-relaxed">
               <p>
-                DailyLedger is built with <span className="font-semibold text-foreground">privacy as its first priority</span>.
-              </p>
-              <p>
-                Your financial records are not stored on DailyLedger servers.
-                Instead, AES-256-GCM encrypted backup files are stored inside{' '}
-                <span className="font-semibold text-foreground">your own Google Drive</span>.
-              </p>
-              <p>
-                This gives you complete ownership and control of your financial information.
+                DailyLedger stores your financial records locally on this device.
+                You can optionally connect Google Drive to create encrypted backups.
               </p>
             </div>
 
@@ -172,7 +168,7 @@ export function GoogleDrivePopup() {
                 <span className="font-semibold text-foreground">Privacy Notice: </span>
                 DailyLedger never stores your financial records on company servers.
                 Only the minimum Google Drive permission required for backup is requested
-                (<code className="text-primary">drive.file</code> scope — access limited to files DailyLedger creates).
+                (<code className="text-primary">drive.file</code> scope).
               </p>
             </div>
 
@@ -186,17 +182,17 @@ export function GoogleDrivePopup() {
                 {connecting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    Connecting to Drive…
+                    Connecting to Google Drive…
                   </>
                 ) : (
                   <>
                     <Cloud className="w-4 h-4" />
-                    {hasGoogleSession ? 'Connect Google Drive' : 'Sign in with Google & Connect Drive'}
+                    Connect Google Drive
                   </>
                 )}
               </button>
               <button onClick={handleSkip} disabled={connecting} className="btn-secondary flex-1 py-3 text-xs sm:text-sm">
-                Skip For Now
+                Start Using DailyLedger
               </button>
             </div>
           </motion.div>

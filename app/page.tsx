@@ -1,7 +1,13 @@
 'use client';
 
+// ============================================================
+// DailyLedger — app/page.tsx
+// Local-first landing page. All CTAs navigate directly to /dashboard.
+// Local storage claims are accurately stated.
+// ============================================================
+
 import { motion } from 'framer-motion';
-import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, Globe, Menu, X } from 'lucide-react';
+import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, Globe, Menu, X, HardDrive } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -31,7 +37,7 @@ export default function LandingPage() {
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/dashboard" className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
               <Shield className="w-5 h-5 text-white" />
             </div>
@@ -45,7 +51,7 @@ export default function LandingPage() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="btn-primary">
+            <Link href="/dashboard" className="btn-primary">
               Get Started <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -59,7 +65,7 @@ export default function LandingPage() {
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="md:hidden border-t border-border bg-background p-4 space-y-3">
             <a href="#features" className="block py-2 text-sm text-muted hover:text-foreground" onClick={() => setMobileMenu(false)}>Features</a>
             <a href="#privacy" className="block py-2 text-sm text-muted hover:text-foreground" onClick={() => setMobileMenu(false)}>Privacy</a>
-            <Link href="/login" className="btn-primary w-full mt-3" onClick={() => setMobileMenu(false)}>
+            <Link href="/dashboard" className="btn-primary w-full mt-3" onClick={() => setMobileMenu(false)}>
               Get Started <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>
@@ -72,7 +78,9 @@ export default function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <motion.div initial="hidden" animate="visible" className="space-y-8">
               <motion.div variants={fadeUp} custom={0} className="flex items-center gap-3 flex-wrap">
-                <span className="badge-encrypted"><Lock className="w-3.5 h-3.5" /> Encrypted Local Storage</span>
+                <span className="badge-encrypted">
+                  <HardDrive className="w-3.5 h-3.5" /> Stored Locally on Device
+                </span>
               </motion.div>
 
               <motion.h1 variants={fadeUp} custom={1} className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.1]">
@@ -82,21 +90,20 @@ export default function LandingPage() {
               </motion.h1>
 
               <motion.p variants={fadeUp} custom={2} className="text-lg text-muted max-w-lg leading-relaxed">
-                Track daily income, expenses, and personal lending with complete privacy.
-                Your financial data never leaves your device — encrypted backups go to your own Google Drive.
+                DailyLedger stores your financial records locally on this device. You can optionally connect Google Drive to create encrypted backups.
               </motion.p>
 
               <motion.div variants={fadeUp} custom={3} className="flex flex-wrap gap-4">
-                <Link href="/login" className="btn-primary text-base px-8 py-4">
-                  Get Started — It&apos;s Free <ArrowRight className="w-5 h-5" />
+                <Link href="/dashboard" className="btn-primary text-base px-8 py-4">
+                  Start Using DailyLedger <ArrowRight className="w-5 h-5" />
                 </Link>
-                <a href="#features" className="btn-secondary text-base px-8 py-4">
-                  Explore Features
-                </a>
+                <Link href="/dashboard" className="btn-secondary text-base px-8 py-4">
+                  Connect Google Drive
+                </Link>
               </motion.div>
 
               <motion.div variants={fadeUp} custom={4} className="flex items-center gap-6 pt-4">
-                {['100% Free', 'No Ads', 'No Tracking'].map((text) => (
+                {['100% Free', 'No Account Required', 'No Ads'].map((text) => (
                   <div key={text} className="flex items-center gap-2 text-sm text-muted">
                     <div className="w-2 h-2 rounded-full bg-primary" />
                     {text}
@@ -218,7 +225,7 @@ export default function LandingPage() {
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid lg:grid-cols-2 gap-16 items-center">
             <motion.div variants={fadeUp} custom={0} className="space-y-6">
               <span className="badge-encrypted">
-                <Lock className="w-3.5 h-3.5" /> Zero Knowledge Architecture
+                <Lock className="w-3.5 h-3.5" /> Privacy First Architecture
               </span>
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground">
                 Your Data Never Touches Our Servers
@@ -229,7 +236,7 @@ export default function LandingPage() {
               </p>
               <ul className="space-y-3">
                 {[
-                  'All data stored locally in your browser',
+                  'Stored locally on this device',
                   'AES-256-GCM encryption for all backups',
                   'Backups saved to YOUR Google Drive',
                   'No tracking, no analytics, no ads',
@@ -259,7 +266,7 @@ export default function LandingPage() {
                 <div className="space-y-3">
                   {[
                     { label: 'Local Storage', status: 'IndexedDB Active' },
-                    { label: 'Encryption', status: 'AES-256-GCM' },
+                    { label: 'Backup Encryption', status: 'AES-256-GCM' },
                     { label: 'Server Data', status: 'None Stored' },
                     { label: 'Drive Backup', status: 'Your Account Only' },
                   ].map((item, i) => (
@@ -289,7 +296,7 @@ export default function LandingPage() {
               Start tracking your finances today with complete privacy and zero cost.
             </motion.p>
             <motion.div variants={fadeUp} custom={2}>
-              <Link href="/login" className="btn-primary text-base px-10 py-4">
+              <Link href="/dashboard" className="btn-primary text-base px-10 py-4">
                 Get Started — Free Forever <ArrowRight className="w-5 h-5" />
               </Link>
             </motion.div>

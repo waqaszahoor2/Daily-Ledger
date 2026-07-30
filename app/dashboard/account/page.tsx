@@ -2,30 +2,28 @@
 
 // ============================================================
 // DailyLedger — app/dashboard/account/page.tsx
-// Account identity, encryption key management, and Google Drive
-// cloud backup controls. Uses useSession() as the single source
-// of truth for user identity (no dual-source race condition).
+// Account identity & Google Drive cloud backup controls.
+// Uses local-first identity and memory session passphrase.
 // ============================================================
 
 import { useState, useEffect, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import {
   User, Mail, ShieldCheck, Cloud, Database, Clock,
-  Folder, CheckCircle2, AlertTriangle, RefreshCw, LogOut, Key,
-  Copy, Download, Trash2, ShieldAlert
+  Folder, CheckCircle2, AlertTriangle, RefreshCw, Key,
+  Download, Trash2, ShieldAlert
 } from 'lucide-react';
-import { useSession, signOut } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useAppStore } from '@/store/useAppStore';
 import { useDriveSync } from '@/hooks/useDriveSync';
-import { setSetting, closeAndLockUserDB } from '@/lib/db/dexie';
+import { setSetting } from '@/lib/db/dexie';
 import {
-  getOrCreateDrivePassphrase,
   listDriveBackups,
   downloadAndDecryptDriveBackup,
   deleteDriveBackupFile,
   type DriveFileInfo
 } from '@/lib/drive/drive';
+import { isTokenValid, getTokenEmail, getAccessToken } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 const emptySubscribe = () => () => {};
@@ -33,46 +31,25 @@ const getClientSnapshot = () => true;
 const getServerSnapshot = () => false;
 
 export default function AccountPage() {
-  const router = useRouter();
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
   const settings = useAppStore((s) => s.settings);
   const setSettings = useAppStore((s) => s.setSettings);
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
+  const sessionPassphrase = useAppStore((s) => s.sessionPassphrase);
   const { syncing, lastSyncTime, triggerAutoSync } = useDriveSync();
 
   const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 
-  // ── Single source of truth for user identity ─────────────
-  // Prefer NextAuth session (Google OAuth). Fall back to localStorage
-  // for email-auth users. No race condition: user is derived synchronously.
-  const user = (() => {
-    if (!mounted) return null;
+  const hasToken = isTokenValid();
+  const tokenEmail = getTokenEmail();
 
-    if (session?.user) {
-      return {
-        name: session.user.name || 'User',
-        email: session.user.email || '',
-        provider: 'Google OAuth 2.0',
-      };
-    }
-
-    try {
-      const stored = localStorage.getItem('dl_user');
-      if (stored) {
-        const parsed = JSON.parse(stored) as { name: string; email: string; provider?: string };
-        return {
-          ...parsed,
-          provider: parsed.provider === 'google' ? 'Google OAuth 2.0' : 'Email Authentication',
-        };
-      }
-    } catch { /* ignore */ }
-
-    return null;
-  })();
+  const user = {
+    name: tokenEmail ? tokenEmail.split('@')[0] : (session?.user?.name || 'Local Ledger User'),
+    email: tokenEmail || (session?.user?.email || 'Stored on this device'),
+    provider: hasToken ? 'Google Drive OAuth (Connected)' : 'Local Storage Mode',
+  };
 
   const [storageEstimate, setStorageEstimate] = useState<{ usageKB: number; quotaMB: number } | null>(null);
-  const [passphrase, setPassphrase] = useState<string>('');
-  const [showPassphrase, setShowPassphrase] = useState(false);
   const [remoteFiles, setRemoteFiles] = useState<DriveFileInfo[]>([]);
   const [loadingRemoteFiles, setLoadingRemoteFiles] = useState(false);
   const [actionFileId, setActionFileId] = useState<string | null>(null);
@@ -86,19 +63,10 @@ export default function AccountPage() {
         setStorageEstimate({ usageKB, quotaMB });
       });
     }
-
-    // Fetch encryption passphrase
-    getOrCreateDrivePassphrase().then((p) => setPassphrase(p)).catch(() => {});
-  }, []); // Only on mount — no session dependency needed
-
-  const handleCopyPassphrase = () => {
-    if (!passphrase) return;
-    navigator.clipboard.writeText(passphrase);
-    toast.success('Backup Passphrase copied to clipboard! Keep it safe.');
-  };
+  }, []);
 
   const handleFetchRemoteBackups = async () => {
-    const accessToken = (session as { accessToken?: string })?.accessToken;
+    const accessToken = getAccessToken();
     const folderId = settings.driveConfig.folderId;
 
     if (!settings.driveConfig.connected || !folderId || !accessToken) {
@@ -120,10 +88,10 @@ export default function AccountPage() {
   };
 
   const handleRestoreFromDrive = async (file: DriveFileInfo) => {
-    const pass = prompt('Enter your encryption passphrase to restore this Drive backup:', passphrase);
+    const pass = prompt('Enter your encryption passphrase (min 12 characters):', sessionPassphrase || '');
     if (!pass) return;
 
-    const accessToken = (session as { accessToken?: string })?.accessToken;
+    const accessToken = getAccessToken();
     if (!accessToken) {
       toast.error('Active Google Drive authorization required to download backup.');
       return;
@@ -145,7 +113,7 @@ export default function AccountPage() {
   const handleDeleteRemoteBackup = async (fileId: string) => {
     if (!confirm('Delete this backup file permanently from your Google Drive?')) return;
 
-    const accessToken = (session as { accessToken?: string })?.accessToken;
+    const accessToken = getAccessToken();
     if (!accessToken) {
       toast.error('Active Google Drive authorization required.');
       return;
@@ -173,47 +141,33 @@ export default function AccountPage() {
     }
   };
 
-  const handleSignOut = async () => {
-    localStorage.removeItem('dl_user');
-    localStorage.removeItem('dl_first_login');
-    await closeAndLockUserDB();
-
-    if (status === 'authenticated') {
-      // Google OAuth — clears server-side session cookie
-      await signOut({ callbackUrl: '/' });
-    } else {
-      toast.success('Signed out cleanly');
-      router.push('/login');
-    }
-  };
-
   if (!mounted) return null;
 
   return (
     <div className="page-container space-y-6 max-w-3xl">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-foreground">Account & Cloud Settings</h2>
+        <h2 className="text-2xl font-bold text-foreground">Account &amp; Cloud Settings</h2>
         <p className="text-sm text-muted mt-1">Manage user identity, encryption keys, and Google Drive cloud backups</p>
       </div>
 
       {/* User Profile Card */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 space-y-4">
         <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-          <User className="w-4 h-4" /> Identity & Credentials
+          <User className="w-4 h-4" /> Identity &amp; Mode
         </div>
 
         <div className="flex items-center gap-4 flex-wrap">
           <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center text-white font-bold text-2xl shadow-md">
-            {user?.name?.charAt(0).toUpperCase() || 'U'}
+            {user.name.charAt(0).toUpperCase()}
           </div>
           <div className="space-y-1 flex-1 min-w-[200px]">
-            <h3 className="text-xl font-bold text-foreground">{user?.name || 'Local Ledger User'}</h3>
+            <h3 className="text-xl font-bold text-foreground">{user.name}</h3>
             <p className="text-sm text-muted flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5" /> {user?.email || 'privacy@localdevice'}
+              <Mail className="w-3.5 h-3.5" /> {user.email}
             </p>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold border border-emerald-500/20">
-              <ShieldCheck className="w-3.5 h-3.5" /> {user?.provider || 'Verified Account'}
+              <ShieldCheck className="w-3.5 h-3.5" /> {user.provider}
             </div>
           </div>
         </div>
@@ -223,10 +177,10 @@ export default function AccountPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-            <Database className="w-4 h-4" /> Partitioned Local Storage
+            <Database className="w-4 h-4" /> Local Storage
           </div>
           <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-            AES-256 Encrypted &amp; Isolated
+            Stored Locally on Device
           </span>
         </div>
 
@@ -249,42 +203,26 @@ export default function AccountPage() {
         </div>
       </motion.div>
 
-      {/* Backup Encryption Passphrase Manager */}
+      {/* Encryption Status Card */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-            <Key className="w-4 h-4" /> Backup Encryption Passphrase
+            <Key className="w-4 h-4" /> Session Passphrase Status
           </div>
           <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20 flex items-center gap-1">
-            <ShieldAlert className="w-3.5 h-3.5" /> Save Your Recovery Key
+            <ShieldAlert className="w-3.5 h-3.5" /> User-Created Passphrases
           </span>
         </div>
 
         <p className="text-xs text-muted leading-relaxed">
-          This 256-bit derived CSPRNG key encrypts your local ledger before uploading to Google Drive. Keep a copy in a safe place to restore your data on a new device.
+          DailyLedger encrypts every Drive backup with AES-256-GCM using your user-created passphrase. Passphrases are stored only in memory during active sessions and are never saved plaintext beside your data.
         </p>
 
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <input
-              type={showPassphrase ? 'text' : 'password'}
-              value={passphrase}
-              readOnly
-              className="w-full h-11 px-4 text-xs font-mono font-bold bg-surface-hover border border-border rounded-xl outline-none text-foreground"
-            />
-          </div>
-          <button
-            onClick={() => setShowPassphrase(!showPassphrase)}
-            className="btn-secondary text-xs h-11 px-3 cursor-pointer"
-          >
-            {showPassphrase ? 'Hide Key' : 'Show Key'}
-          </button>
-          <button
-            onClick={handleCopyPassphrase}
-            className="btn-primary text-xs h-11 px-4 flex items-center gap-1.5 cursor-pointer"
-          >
-            <Copy className="w-4 h-4" /> Copy Key
-          </button>
+        <div className="p-3.5 rounded-xl bg-surface-hover/60 border border-border text-xs flex items-center justify-between">
+          <span className="text-muted">Active Session Status:</span>
+          <span className={`font-bold ${sessionPassphrase ? 'text-emerald-500' : 'text-amber-500'}`}>
+            {sessionPassphrase ? 'Unlocked' : 'Locked (Passphrase prompt will show on backup/restore)'}
+          </span>
         </div>
       </motion.div>
 
@@ -292,15 +230,15 @@ export default function AccountPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-            <Cloud className="w-4 h-4" /> Google Drive Cloud Status
+            <Cloud className="w-4 h-4" /> Google Drive Status
           </div>
           {settings.driveConfig.connected ? (
             <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Mounted &amp; Connected
+              <CheckCircle2 className="w-3.5 h-3.5" /> Connected
             </span>
           ) : (
             <span className="text-xs font-bold text-warning bg-warning/10 px-2.5 py-1 rounded-full border border-warning/20 flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" /> Unmounted / Disconnected
+              <AlertTriangle className="w-3.5 h-3.5" /> Local Only Mode
             </span>
           )}
         </div>
@@ -309,7 +247,7 @@ export default function AccountPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="p-3.5 rounded-xl bg-surface-hover/50 border border-border">
               <span className="text-muted block flex items-center gap-1.5 mb-1">
-                <Folder className="w-3.5 h-3.5 text-primary" /> Target Mounted Folder
+                <Folder className="w-3.5 h-3.5 text-primary" /> Target Drive Folder
               </span>
               <span className="font-bold text-foreground text-sm">
                 {settings.driveConfig.folderName || 'DailyLedger_Backups'}
@@ -318,7 +256,7 @@ export default function AccountPage() {
 
             <div className="p-3.5 rounded-xl bg-surface-hover/50 border border-border">
               <span className="text-muted block flex items-center gap-1.5 mb-1">
-                <Clock className="w-3.5 h-3.5 text-primary" /> Last Verified Auto Sync
+                <Clock className="w-3.5 h-3.5 text-primary" /> Last Backup
               </span>
               <span className="font-bold text-foreground text-sm">
                 {lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Not synced yet'}
@@ -350,7 +288,7 @@ export default function AccountPage() {
                 onClick={handleDisconnectDrive}
                 className="btn-secondary py-2.5 text-xs text-danger hover:bg-danger/10 border-danger/20 cursor-pointer"
               >
-                Disconnect / Unmount
+                Disconnect Drive
               </button>
             )}
           </div>
@@ -360,7 +298,7 @@ export default function AccountPage() {
         {remoteFiles.length > 0 && (
           <div className="pt-4 border-t border-border/60 space-y-3">
             <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
-              <Folder className="w-4 h-4 text-primary" /> Remote Drive Backup Snapshot Files ({remoteFiles.length})
+              <Folder className="w-4 h-4 text-primary" /> Remote Drive Backup Files ({remoteFiles.length})
             </h4>
 
             <div className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-surface-hover/30">
@@ -378,7 +316,7 @@ export default function AccountPage() {
                       disabled={actionFileId === file.id}
                       className="btn-primary py-1.5 px-3 text-[11px] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
-                      <Download className="w-3 h-3" /> Restore to Device
+                      <Download className="w-3 h-3" /> Restore
                     </button>
                     <button
                       onClick={() => handleDeleteRemoteBackup(file.id)}
@@ -395,11 +333,6 @@ export default function AccountPage() {
           </div>
         )}
       </motion.div>
-
-      {/* Logout Action */}
-      <button onClick={handleSignOut} className="btn-secondary w-full py-3 text-sm flex items-center justify-center gap-2 cursor-pointer">
-        <LogOut className="w-4 h-4" /> Sign Out of Account
-      </button>
     </div>
   );
 }
