@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, WifiOff, Menu, X } from 'lucide-react';
+import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -20,7 +20,6 @@ const features = [
   { icon: Cloud, title: 'Google Drive Backup', desc: 'Encrypted backups to your own Google Drive for total data ownership.', color: 'bg-blue-500/10 text-blue-600' },
   { icon: Lock, title: 'AES-256 Encryption', desc: 'Bank-grade encryption protects every backup file you create.', color: 'bg-primary/10 text-primary' },
   { icon: Smartphone, title: 'Works Everywhere', desc: 'Responsive design works beautifully on desktop, tablet, and mobile.', color: 'bg-pink-500/10 text-pink-600' },
-  { icon: WifiOff, title: 'Offline Ready', desc: 'IndexedDB keeps your data locally. No internet needed to operate.', color: 'bg-primary/10 text-primary' },
 ];
 
 export default function LandingPage() {
@@ -72,7 +71,6 @@ export default function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <motion.div initial="hidden" animate="visible" className="space-y-8">
               <motion.div variants={fadeUp} custom={0} className="flex items-center gap-3 flex-wrap">
-                <span className="badge-offline"><WifiOff className="w-3.5 h-3.5" /> Offline Mode</span>
                 <span className="badge-encrypted"><Lock className="w-3.5 h-3.5" /> Encrypted Local Storage</span>
               </motion.div>
 
