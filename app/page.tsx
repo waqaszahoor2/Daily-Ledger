@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, Menu, X } from 'lucide-react';
+import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, WifiOff, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -20,6 +20,7 @@ const features = [
   { icon: Cloud, title: 'Google Drive Backup', desc: 'Encrypted backups to your own Google Drive for total data ownership.', color: 'bg-blue-500/10 text-blue-600' },
   { icon: Lock, title: 'AES-256 Encryption', desc: 'Bank-grade encryption protects every backup file you create.', color: 'bg-primary/10 text-primary' },
   { icon: Smartphone, title: 'Works Everywhere', desc: 'Responsive design works beautifully on desktop, tablet, and mobile.', color: 'bg-pink-500/10 text-pink-600' },
+  { icon: WifiOff, title: 'Offline Ready', desc: 'IndexedDB keeps your data locally. No internet needed to operate.', color: 'bg-indigo-500/10 text-indigo-600' },
 ];
 
 export default function LandingPage() {
@@ -198,7 +199,7 @@ export default function LandingPage() {
                 viewport={{ once: true }}
                 variants={fadeUp}
                 custom={i}
-                className="glass-card p-6 group hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
+                className="glass-card p-6 group transition-all duration-300 border border-border/80 hover:border-primary hover:ring-2 hover:ring-primary/20 hover:shadow-xl hover:shadow-primary/10 hover:-translate-y-1 cursor-pointer"
               >
                 <div className={`w-12 h-12 rounded-2xl ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <feature.icon className="w-6 h-6" />
