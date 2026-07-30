@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, WifiOff, Menu, X } from 'lucide-react';
+import { ArrowRight, Shield, Smartphone, BarChart3, Cloud, Lock, Globe, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -20,7 +20,7 @@ const features = [
   { icon: Cloud, title: 'Google Drive Backup', desc: 'Encrypted backups to your own Google Drive for total data ownership.', color: 'bg-blue-500/10 text-blue-600' },
   { icon: Lock, title: 'AES-256 Encryption', desc: 'Bank-grade encryption protects every backup file you create.', color: 'bg-primary/10 text-primary' },
   { icon: Smartphone, title: 'Works Everywhere', desc: 'Responsive design works beautifully on desktop, tablet, and mobile.', color: 'bg-pink-500/10 text-pink-600' },
-  { icon: WifiOff, title: 'Offline Ready', desc: 'IndexedDB keeps your data locally. No internet needed to operate.', color: 'bg-indigo-500/10 text-indigo-600' },
+  { icon: Globe, title: 'Vercel Cloud Live', desc: 'Hosted live on Vercel for fast, secure, 24/7 global availability.', color: 'bg-emerald-500/10 text-emerald-600' },
 ];
 
 export default function LandingPage() {
