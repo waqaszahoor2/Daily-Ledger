@@ -75,13 +75,22 @@ function loadGISScript(): Promise<void> {
 
 // ─── Connect Google Drive ─────────────────────────────────────────────────────
 
+export function getGoogleClientId(): string {
+  const envId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  if (envId && envId.trim() !== '' && envId !== 'your_google_web_client_id') {
+    return envId;
+  }
+  // Fallback to default Web Client ID if environment variable is unconfigured in Vercel
+  return '913422447403-ken4krrgfcbtvului82g2ehqsbvem71u.apps.googleusercontent.com';
+}
+
 /**
  * Opens a Google OAuth token popup for the Drive scope.
  * Returns an access token string or throws a user-readable error.
  * Token is stored in memory only.
  */
 export async function connectDrive(): Promise<string> {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const clientId = getGoogleClientId();
 
   if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
     throw new Error(

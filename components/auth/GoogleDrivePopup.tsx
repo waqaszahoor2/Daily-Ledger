@@ -12,7 +12,7 @@ import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw,
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
 import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
-import { connectDrive, isTokenValid } from '@/lib/gis/tokenClient';
+import { connectDrive, isTokenValid, getGoogleClientId } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 const benefits = [
@@ -34,7 +34,7 @@ export function GoogleDrivePopup() {
   const handleConnect = async () => {
     setConfigError(null);
 
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const clientId = getGoogleClientId();
     if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
       const msg = 'Google Drive connection is not configured. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to the production environment.';
       setConfigError(msg);
