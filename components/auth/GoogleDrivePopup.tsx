@@ -8,11 +8,11 @@
 
 import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle, Info } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
 import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
-import { connectDrive, isTokenValid, getGoogleClientId } from '@/lib/gis/tokenClient';
+import { connectDrive, isTokenValid, getGoogleClientId, loadGISScript } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 const benefits = [
@@ -30,9 +30,18 @@ export function GoogleDrivePopup() {
 
   const [connecting, setConnecting] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
+
+  // Preload GIS script when popup opens
+  useEffect(() => {
+    if (show) {
+      loadGISScript().catch(() => {});
+    }
+  }, [show]);
 
   const handleConnect = async () => {
     setConfigError(null);
+    setPopupBlocked(false);
 
     const clientId = getGoogleClientId();
     if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
@@ -44,7 +53,7 @@ export function GoogleDrivePopup() {
 
     setConnecting(true);
     try {
-      // 1. Trigger Google Identity Services OAuth popup (memory token)
+      // 1. Trigger Google Identity Services OAuth popup synchronously
       const accessToken = await connectDrive();
 
       // 2. Perform authentic Google Drive API request to locate/create backup folder
@@ -66,6 +75,10 @@ export function GoogleDrivePopup() {
     } catch (err) {
       console.error('Drive connect error:', err);
       const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes('popup') || message.toLowerCase().includes('blocked')) {
+        setPopupBlocked(true);
+      }
+      setConfigError(message);
       toast.error(`Drive connection failed: ${message}`);
     } finally {
       setConnecting(false);
@@ -138,6 +151,20 @@ export function GoogleDrivePopup() {
                 <p className="text-xs text-danger font-medium leading-relaxed">
                   {configError}
                 </p>
+              </div>
+            )}
+
+            {popupBlocked && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">How to allow Google popup:</span>
+                  <ol className="list-decimal ml-4 mt-1 space-y-0.5">
+                    <li>Look at your browser URL bar for the blocked popup icon (🚫).</li>
+                    <li>Click the icon and select <strong>&quot;Always allow popups from this site&quot;</strong>.</li>
+                    <li>Click <strong>Connect Google Drive</strong> again.</li>
+                  </ol>
+                </div>
               </div>
             )}
 

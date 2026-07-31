@@ -89,29 +89,29 @@ export function getGoogleClientId(): string {
  * Executes synchronously in user click gesture to avoid browser popup blockers.
  * Returns an access token string or throws a user-readable error.
  */
-export async function connectDrive(): Promise<string> {
+export function connectDrive(): Promise<string> {
   const clientId = getGoogleClientId();
 
   if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
-    throw new Error(
-      'Google Drive connection is not configured. ' +
-      'Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to the production environment variables.'
+    return Promise.reject(
+      new Error(
+        'Google Drive connection is not configured. ' +
+        'Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to the production environment variables.'
+      )
     );
   }
 
-  // Ensure script is loaded (if preloaded, this returns immediately synchronously)
-  if (typeof window !== 'undefined' && !('google' in window)) {
-    await loadGISScript();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const google = typeof window !== 'undefined' ? (window as any).google : null;
+  if (!google?.accounts?.oauth2) {
+    // If GIS script hasn't finished loading yet, trigger load and ask user to click again
+    loadGISScript().catch(() => {});
+    return Promise.reject(
+      new Error('Google Identity Services script is initializing. Please click Connect again.')
+    );
   }
 
   return new Promise((resolve, reject) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const google = (window as any).google;
-    if (!google?.accounts?.oauth2) {
-      reject(new Error('Google Identity Services failed to load. Please refresh the page and try again.'));
-      return;
-    }
-
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: DRIVE_SCOPE,
@@ -128,13 +128,18 @@ export async function connectDrive(): Promise<string> {
         if (err.type === 'popup_closed') {
           reject(new Error('Authorization cancelled: the popup was closed'));
         } else if (err.type === 'popup_failed_to_open') {
-          reject(new Error('Popup window was blocked by your browser. Please allow popups for this site and try again.'));
+          reject(
+            new Error(
+              'Popup window was blocked by your browser. Please click the popup icon in your browser URL address bar to allow popups for this site.'
+            )
+          );
         } else {
           reject(new Error(err.message ?? 'Google authorization failed'));
         }
       },
     });
 
+    // Request token synchronously in click event thread
     tokenClient.requestAccessToken({ prompt: 'consent' });
   });
 }
