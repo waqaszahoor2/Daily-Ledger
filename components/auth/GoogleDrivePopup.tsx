@@ -39,7 +39,11 @@ export function GoogleDrivePopup() {
     }
   }, [show]);
 
-  const handleConnect = async () => {
+  /**
+   * Synchronous click handler — calls connectDrive() synchronously in line 1
+   * of the mouse click event stack tick to satisfy strict browser popup policies.
+   */
+  const handleConnect = () => {
     setConfigError(null);
     setPopupBlocked(false);
 
@@ -52,37 +56,39 @@ export function GoogleDrivePopup() {
     }
 
     setConnecting(true);
-    try {
-      // 1. Trigger Google Identity Services OAuth popup synchronously
-      const accessToken = await connectDrive();
 
-      // 2. Perform authentic Google Drive API request to locate/create backup folder
-      const folderId = await getOrCreateDriveFolder(accessToken);
+    // Call connectDrive() synchronously in click event thread
+    connectDrive()
+      .then(async (accessToken) => {
+        // 2. Perform authentic Google Drive API request to locate/create backup folder
+        const folderId = await getOrCreateDriveFolder(accessToken);
 
-      // 3. Save connection metadata
-      const driveCfg = {
-        connected: true,
-        folderId,
-        folderName: DRIVE_FOLDER_NAME,
-      };
+        // 3. Save connection metadata
+        const driveCfg = {
+          connected: true,
+          folderId,
+          folderName: DRIVE_FOLDER_NAME,
+        };
 
-      setSettings({ driveConfig: driveCfg, driveSkipped: false });
-      await setSetting('driveConfig', driveCfg);
-      await setSetting('driveSkipped', false);
+        setSettings({ driveConfig: driveCfg, driveSkipped: false });
+        await setSetting('driveConfig', driveCfg);
+        await setSetting('driveSkipped', false);
 
-      toast.success(`Google Drive connected! Backup folder: ${DRIVE_FOLDER_NAME}`);
-      setShow(false);
-    } catch (err) {
-      console.error('Drive connect error:', err);
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.toLowerCase().includes('popup') || message.toLowerCase().includes('blocked')) {
-        setPopupBlocked(true);
-      }
-      setConfigError(message);
-      toast.error(`Drive connection failed: ${message}`);
-    } finally {
-      setConnecting(false);
-    }
+        toast.success(`Google Drive connected! Backup folder: ${DRIVE_FOLDER_NAME}`);
+        setShow(false);
+      })
+      .catch((err) => {
+        console.error('Drive connect error:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.toLowerCase().includes('popup') || message.toLowerCase().includes('blocked')) {
+          setPopupBlocked(true);
+        }
+        setConfigError(message);
+        toast.error(`Drive connection failed: ${message}`);
+      })
+      .finally(() => {
+        setConnecting(false);
+      });
   };
 
   const handleSkip = useCallback(async () => {
@@ -155,14 +161,14 @@ export function GoogleDrivePopup() {
             )}
 
             {popupBlocked && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+                <Info className="w-4.5 h-4.5 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold">How to allow Google popup:</span>
-                  <ol className="list-decimal ml-4 mt-1 space-y-0.5">
-                    <li>Look at your browser URL bar for the blocked popup icon (🚫).</li>
+                  <span className="font-bold block mb-1">Your browser blocked the Google popup window:</span>
+                  <ol className="list-decimal ml-4 space-y-1 text-[11px] leading-relaxed">
+                    <li>Look at your browser address bar (top right) for the blocked popup icon (🚫 or 🔒).</li>
                     <li>Click the icon and select <strong>&quot;Always allow popups from this site&quot;</strong>.</li>
-                    <li>Click <strong>Connect Google Drive</strong> again.</li>
+                    <li>Click <strong>Connect Google Drive</strong> below to open Google authorization.</li>
                   </ol>
                 </div>
               </div>
@@ -204,7 +210,7 @@ export function GoogleDrivePopup() {
               <button
                 onClick={handleConnect}
                 disabled={connecting}
-                className="btn-primary flex-1 py-3 text-xs sm:text-sm disabled:opacity-60"
+                className="btn-primary flex-1 py-3 text-xs sm:text-sm disabled:opacity-60 cursor-pointer"
               >
                 {connecting ? (
                   <>
@@ -218,7 +224,7 @@ export function GoogleDrivePopup() {
                   </>
                 )}
               </button>
-              <button onClick={handleSkip} disabled={connecting} className="btn-secondary flex-1 py-3 text-xs sm:text-sm">
+              <button onClick={handleSkip} disabled={connecting} className="btn-secondary flex-1 py-3 text-xs sm:text-sm cursor-pointer">
                 Start Using DailyLedger
               </button>
             </div>
