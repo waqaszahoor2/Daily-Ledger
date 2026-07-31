@@ -1,14 +1,14 @@
 // ============================================================
 // DailyLedger — components/auth/GoogleDrivePopup.tsx
 // Real Google Drive connection via Google Identity Services (GIS).
-// Uses memory-only token storage and creates/locates DailyLedger_Backups.
+// Provides explicit guidance if popups are blocked by browser.
 // ============================================================
 
 'use client';
 
 import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle, Info } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
 import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
@@ -142,11 +142,27 @@ export function GoogleDrivePopup() {
             </div>
 
             {configError && (
-              <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 flex items-start gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-danger font-medium leading-relaxed">
-                  {configError}
-                </p>
+              <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-danger font-medium leading-relaxed">
+                    {configError}
+                  </p>
+                </div>
+
+                {configError.toLowerCase().includes('popup') && (
+                  <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-xs space-y-1.5">
+                    <p className="font-semibold text-warning flex items-center gap-1.5">
+                      <Info className="w-4 h-4" /> How to allow popups in your browser:
+                    </p>
+                    <ol className="list-decimal list-inside text-muted space-y-1 text-[11px]">
+                      <li>Look at your browser URL address bar (top right corner).</li>
+                      <li>Click the blocked popup icon (🚫 or 🔒).</li>
+                      <li>Select <strong>&quot;Always allow popups from this site&quot;</strong>.</li>
+                      <li>Click <strong>Connect Google Drive</strong> again below.</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             )}
 
