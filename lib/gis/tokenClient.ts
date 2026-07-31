@@ -1,6 +1,6 @@
 // ============================================================
 // DailyLedger — lib/gis/tokenClient.ts
-// Google Identity Services (GIS) OAuth 2.0 token client.
+// Google OAuth 2.0 token client supporting both popup & redirect flows.
 // Tokens are kept ONLY in module memory — never written to
 // localStorage, sessionStorage, IndexedDB, or cookies.
 // ============================================================
@@ -46,6 +46,39 @@ export function getTokenEmail(): string {
   return _tokenState?.email ?? '';
 }
 
+// ─── Client ID Helper ─────────────────────────────────────────────────────────
+
+export function getGoogleClientId(): string {
+  const envId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  if (envId && envId.trim() !== '' && envId !== 'your_google_web_client_id') {
+    return envId;
+  }
+  // Fallback Web Client ID
+  return '913422447403-ken4krrgfcbtvului82g2ehqsbvem71u.apps.googleusercontent.com';
+}
+
+// ─── Direct Google OAuth URL Builder ──────────────────────────────────────────
+
+/**
+ * Builds the direct Google OAuth 2.0 Implicit Grant authorization URL.
+ * Redirects back to /dashboard with #access_token=... in the URL fragment.
+ */
+export function getGoogleOAuthUrl(customRedirectUri?: string): string {
+  const clientId = getGoogleClientId();
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://daily-ledger-snowy.vercel.app';
+  const redirectUri = customRedirectUri || `${origin}/dashboard`;
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'token',
+    scope: DRIVE_SCOPE,
+    prompt: 'consent',
+  });
+
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
 // ─── GIS script loader ────────────────────────────────────────────────────────
 
 let _scriptLoaded = false;
@@ -73,21 +106,11 @@ export function loadGISScript(): Promise<void> {
   });
 }
 
-// ─── Connect Google Drive ─────────────────────────────────────────────────────
-
-export function getGoogleClientId(): string {
-  const envId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  if (envId && envId.trim() !== '' && envId !== 'your_google_web_client_id') {
-    return envId;
-  }
-  // Fallback to default Web Client ID if environment variable is unconfigured in Vercel
-  return '913422447403-ken4krrgfcbtvului82g2ehqsbvem71u.apps.googleusercontent.com';
-}
+// ─── Connect Google Drive (GIS Popup with Fallback) ───────────────────────────
 
 /**
- * Opens a Google OAuth token popup for the Drive scope.
- * Executes synchronously in user click gesture to avoid browser popup blockers.
- * Returns an access token string or throws a user-readable error.
+ * Opens Google OAuth authorization for the Drive scope.
+ * Uses native window popup or redirect URL so browser popup blockers do not block it.
  */
 export function connectDrive(): Promise<string> {
   const clientId = getGoogleClientId();
@@ -95,52 +118,71 @@ export function connectDrive(): Promise<string> {
   if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
     return Promise.reject(
       new Error(
-        'Google Drive connection is not configured. ' +
-        'Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to the production environment variables.'
+        'Google Drive connection is not configured. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to environment variables.'
       )
     );
   }
 
+  // Try GIS token client if script is loaded
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const google = typeof window !== 'undefined' ? (window as any).google : null;
-  if (!google?.accounts?.oauth2) {
-    // If GIS script hasn't finished loading yet, trigger load and ask user to click again
-    loadGISScript().catch(() => {});
-    return Promise.reject(
-      new Error('Google Identity Services script is initializing. Please click Connect again.')
-    );
+  if (google?.accounts?.oauth2) {
+    return new Promise((resolve, reject) => {
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: DRIVE_SCOPE,
+        callback: (response: { access_token?: string; error?: string; expires_in?: number; email?: string }) => {
+          if (response.error || !response.access_token) {
+            reject(new Error(response.error ?? 'Authorization was denied or cancelled'));
+            return;
+          }
+          const expiresIn = response.expires_in ?? 3600;
+          setAccessToken(response.access_token, expiresIn, response.email ?? '');
+          resolve(response.access_token);
+        },
+        error_callback: (err: { type: string; message?: string }) => {
+          if (err.type === 'popup_closed') {
+            reject(new Error('Authorization cancelled: the popup was closed'));
+          } else {
+            reject(new Error(err.message ?? 'Google authorization failed'));
+          }
+        },
+      });
+
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+  }
+
+  // Direct fallback: open Google OAuth in window
+  const authUrl = getGoogleOAuthUrl();
+  const width = 600;
+  const height = 700;
+  const left = window.screenX + (window.outerWidth - width) / 2;
+  const top = window.screenY + (window.outerHeight - height) / 2;
+  const popup = window.open(
+    authUrl,
+    'GoogleDriveAuth',
+    `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no,location=yes`
+  );
+
+  if (!popup) {
+    // If popups are completely disabled in browser settings, redirect current window
+    window.location.href = authUrl;
+    return new Promise(() => {}); // never resolves because page navigates
   }
 
   return new Promise((resolve, reject) => {
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: DRIVE_SCOPE,
-      callback: (response: { access_token?: string; error?: string; expires_in?: number; email?: string }) => {
-        if (response.error || !response.access_token) {
-          reject(new Error(response.error ?? 'Authorization was denied or cancelled'));
-          return;
-        }
-        const expiresIn = response.expires_in ?? 3600;
-        setAccessToken(response.access_token, expiresIn, response.email ?? '');
-        resolve(response.access_token);
-      },
-      error_callback: (err: { type: string; message?: string }) => {
-        if (err.type === 'popup_closed') {
-          reject(new Error('Authorization cancelled: the popup was closed'));
-        } else if (err.type === 'popup_failed_to_open') {
-          reject(
-            new Error(
-              'Popup window was blocked by your browser. Please click the popup icon in your browser URL address bar to allow popups for this site.'
-            )
-          );
+    const timer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(timer);
+        const token = getAccessToken();
+        if (token) {
+          resolve(token);
         } else {
-          reject(new Error(err.message ?? 'Google authorization failed'));
+          reject(new Error('Authorization popup closed without completing authentication.'));
         }
-      },
-    });
-
-    // Request token synchronously in click event thread
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+      }
+    }, 500);
   });
 }
 

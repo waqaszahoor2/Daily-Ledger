@@ -4,7 +4,7 @@
 // DailyLedger — app/dashboard/layout.tsx
 // Dashboard shell: sidebar nav, mobile drawer, topbar.
 // Local-first application — works fully without an account.
-// Runs one-time migration on mount.
+// Handles URL OAuth fragment redirect callback for Google Drive.
 // ============================================================
 
 import { useEffect, useSyncExternalStore } from 'react';
@@ -12,16 +12,18 @@ import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ArrowLeftRight, BarChart3, Settings, Menu, X,
-  Sun, Moon, Cloud, AlertTriangle, ChevronRight, Shield, HandCoins, RefreshCw, User
+  Sun, Moon, Cloud, AlertTriangle, ChevronRight, Shield, HandCoins, RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { GoogleDrivePopup } from '@/components/auth/GoogleDrivePopup';
 import { useAppStore } from '@/store/useAppStore';
 import { useDriveSync } from '@/hooks/useDriveSync';
-import { getAppSettings } from '@/lib/db/dexie';
+import { getAppSettings, setSetting } from '@/lib/db/dexie';
 import { runMigrationIfNeeded } from '@/lib/db/migration';
-import { isTokenValid, getTokenEmail } from '@/lib/gis/tokenClient';
+import { isTokenValid, getTokenEmail, setAccessToken } from '@/lib/gis/tokenClient';
+import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
+import { toast } from 'sonner';
 
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
@@ -48,7 +50,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 
   useEffect(() => {
-    // Run one-time DB migration and load settings
+    // 1. Check for Google OAuth hash fragment redirect callback (#access_token=...)
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const token = params.get('access_token');
+      const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+
+      if (token) {
+        setAccessToken(token, expiresIn);
+        // Strip access token from address bar immediately to secure URL
+        window.history.replaceState(null, '', window.location.pathname);
+
+        getOrCreateDriveFolder(token)
+          .then(async (folderId) => {
+            const driveCfg = {
+              connected: true,
+              folderId,
+              folderName: DRIVE_FOLDER_NAME,
+            };
+            setSettings({ driveConfig: driveCfg, driveSkipped: false });
+            await setSetting('driveConfig', driveCfg);
+            await setSetting('driveSkipped', false);
+            toast.success(`Google Drive connected! Backup folder: ${DRIVE_FOLDER_NAME}`);
+          })
+          .catch((err) => {
+            toast.error(`Drive setup error: ${err.message}`);
+          });
+      }
+    }
+
+    // 2. Run one-time DB migration and load settings
     runMigrationIfNeeded()
       .then(() => getAppSettings())
       .then((s) => setSettings(s))

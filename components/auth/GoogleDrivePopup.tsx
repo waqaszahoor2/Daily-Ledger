@@ -1,18 +1,18 @@
 // ============================================================
 // DailyLedger — components/auth/GoogleDrivePopup.tsx
-// Real Google Drive connection via Google Identity Services (GIS).
-// Uses memory-only token storage and creates/locates DailyLedger_Backups.
+// Real Google Drive connection via Google Identity Services (GIS)
+// or Direct Google OAuth Redirect.
 // ============================================================
 
 'use client';
 
 import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle, Info } from 'lucide-react';
+import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
 import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
-import { connectDrive, isTokenValid, getGoogleClientId, loadGISScript } from '@/lib/gis/tokenClient';
+import { connectDrive, isTokenValid, getGoogleClientId, loadGISScript, getGoogleOAuthUrl } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 const benefits = [
@@ -30,7 +30,6 @@ export function GoogleDrivePopup() {
 
   const [connecting, setConnecting] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [popupBlocked, setPopupBlocked] = useState(false);
 
   // Preload GIS script when popup opens
   useEffect(() => {
@@ -40,12 +39,10 @@ export function GoogleDrivePopup() {
   }, [show]);
 
   /**
-   * Synchronous click handler — calls connectDrive() synchronously in line 1
-   * of the mouse click event stack tick to satisfy strict browser popup policies.
+   * Primary connection handler: opens popup window for Google OAuth.
    */
   const handleConnect = () => {
     setConfigError(null);
-    setPopupBlocked(false);
 
     const clientId = getGoogleClientId();
     if (!clientId || clientId.trim() === '' || clientId === 'your_google_web_client_id') {
@@ -57,13 +54,9 @@ export function GoogleDrivePopup() {
 
     setConnecting(true);
 
-    // Call connectDrive() synchronously in click event thread
     connectDrive()
       .then(async (accessToken) => {
-        // 2. Perform authentic Google Drive API request to locate/create backup folder
         const folderId = await getOrCreateDriveFolder(accessToken);
-
-        // 3. Save connection metadata
         const driveCfg = {
           connected: true,
           folderId,
@@ -80,15 +73,21 @@ export function GoogleDrivePopup() {
       .catch((err) => {
         console.error('Drive connect error:', err);
         const message = err instanceof Error ? err.message : String(err);
-        if (message.toLowerCase().includes('popup') || message.toLowerCase().includes('blocked')) {
-          setPopupBlocked(true);
-        }
         setConfigError(message);
         toast.error(`Drive connection failed: ${message}`);
       })
       .finally(() => {
         setConnecting(false);
       });
+  };
+
+  /**
+   * Direct redirect fallback: navigates current page to Google OAuth consent screen.
+   * Completely bypasses all browser popup blockers.
+   */
+  const handleDirectRedirect = () => {
+    const authUrl = getGoogleOAuthUrl();
+    window.location.href = authUrl;
   };
 
   const handleSkip = useCallback(async () => {
@@ -152,25 +151,19 @@ export function GoogleDrivePopup() {
             </div>
 
             {configError && (
-              <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 flex items-start gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-danger font-medium leading-relaxed">
-                  {configError}
-                </p>
-              </div>
-            )}
-
-            {popupBlocked && (
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
-                <Info className="w-4.5 h-4.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold block mb-1">Your browser blocked the Google popup window:</span>
-                  <ol className="list-decimal ml-4 space-y-1 text-[11px] leading-relaxed">
-                    <li>Look at your browser address bar (top right) for the blocked popup icon (🚫 or 🔒).</li>
-                    <li>Click the icon and select <strong>&quot;Always allow popups from this site&quot;</strong>.</li>
-                    <li>Click <strong>Connect Google Drive</strong> below to open Google authorization.</li>
-                  </ol>
+              <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-danger font-medium leading-relaxed">
+                    {configError}
+                  </p>
                 </div>
+                <button
+                  onClick={handleDirectRedirect}
+                  className="w-full py-2 px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-primary/90 transition cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Authorize Directly in Page (Bypass Popup Blockers)
+                </button>
               </div>
             )}
 
@@ -206,26 +199,36 @@ export function GoogleDrivePopup() {
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 pt-1">
+            <div className="flex flex-col gap-2.5 sm:gap-3 pt-1">
+              <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+                <button
+                  onClick={handleConnect}
+                  disabled={connecting}
+                  className="btn-primary flex-1 py-3 text-xs sm:text-sm disabled:opacity-60 cursor-pointer"
+                >
+                  {connecting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Connecting to Google Drive…
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-4 h-4" />
+                      Connect Google Drive
+                    </>
+                  )}
+                </button>
+                <button onClick={handleSkip} disabled={connecting} className="btn-secondary flex-1 py-3 text-xs sm:text-sm cursor-pointer">
+                  Start Using DailyLedger
+                </button>
+              </div>
+
               <button
-                onClick={handleConnect}
+                onClick={handleDirectRedirect}
                 disabled={connecting}
-                className="btn-primary flex-1 py-3 text-xs sm:text-sm disabled:opacity-60 cursor-pointer"
+                className="text-xs text-muted hover:text-primary flex items-center justify-center gap-1 py-1 font-medium underline cursor-pointer"
               >
-                {connecting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Connecting to Google Drive…
-                  </>
-                ) : (
-                  <>
-                    <Cloud className="w-4 h-4" />
-                    Connect Google Drive
-                  </>
-                )}
-              </button>
-              <button onClick={handleSkip} disabled={connecting} className="btn-secondary flex-1 py-3 text-xs sm:text-sm cursor-pointer">
-                Start Using DailyLedger
+                <ExternalLink className="w-3 h-3" /> Having popup trouble? Authorize via page redirect
               </button>
             </div>
           </motion.div>
