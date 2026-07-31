@@ -50,7 +50,7 @@ export function getTokenEmail(): string {
 
 let _scriptLoaded = false;
 
-function loadGISScript(): Promise<void> {
+export function loadGISScript(): Promise<void> {
   if (_scriptLoaded || (typeof window !== 'undefined' && 'google' in window && (window as Record<string, unknown>).google)) {
     _scriptLoaded = true;
     return Promise.resolve();
@@ -86,8 +86,8 @@ export function getGoogleClientId(): string {
 
 /**
  * Opens a Google OAuth token popup for the Drive scope.
+ * Executes synchronously in user click gesture to avoid browser popup blockers.
  * Returns an access token string or throws a user-readable error.
- * Token is stored in memory only.
  */
 export async function connectDrive(): Promise<string> {
   const clientId = getGoogleClientId();
@@ -99,13 +99,16 @@ export async function connectDrive(): Promise<string> {
     );
   }
 
-  await loadGISScript();
+  // Ensure script is loaded (if preloaded, this returns immediately synchronously)
+  if (typeof window !== 'undefined' && !('google' in window)) {
+    await loadGISScript();
+  }
 
   return new Promise((resolve, reject) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const google = (window as any).google;
     if (!google?.accounts?.oauth2) {
-      reject(new Error('Google Identity Services failed to load. Please refresh and try again.'));
+      reject(new Error('Google Identity Services failed to load. Please refresh the page and try again.'));
       return;
     }
 
@@ -124,6 +127,8 @@ export async function connectDrive(): Promise<string> {
       error_callback: (err: { type: string; message?: string }) => {
         if (err.type === 'popup_closed') {
           reject(new Error('Authorization cancelled: the popup was closed'));
+        } else if (err.type === 'popup_failed_to_open') {
+          reject(new Error('Popup window was blocked by your browser. Please allow popups for this site and try again.'));
         } else {
           reject(new Error(err.message ?? 'Google authorization failed'));
         }
