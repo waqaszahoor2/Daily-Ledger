@@ -1,7 +1,7 @@
 // ============================================================
 // DailyLedger — components/auth/GoogleDrivePopup.tsx
 // Direct Google OAuth Connection for Google Drive backups.
-// Fully bypasses browser popup blockers via direct page navigation.
+// Uses NextAuth Google provider matching Google Cloud Console callback URI.
 // ============================================================
 
 'use client';
@@ -9,6 +9,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { signIn } from 'next-auth/react';
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
 import { isTokenValid, getGoogleClientId, getGoogleOAuthUrl } from '@/lib/gis/tokenClient';
@@ -30,10 +31,10 @@ export function GoogleDrivePopup() {
   const [configError, setConfigError] = useState<string | null>(null);
 
   /**
-   * Primary connection handler: redirects directly to Google OAuth consent screen.
-   * Completely immune to browser popup blockers across desktop and mobile.
+   * Primary connection handler: triggers Google OAuth via NextAuth / Direct OAuth
+   * matching registered callback URI https://daily-ledger-snowy.vercel.app/api/auth/callback/google
    */
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setConfigError(null);
 
     const clientId = getGoogleClientId();
@@ -44,9 +45,14 @@ export function GoogleDrivePopup() {
       return;
     }
 
-    // Direct page navigation to Google OAuth screen
-    const authUrl = getGoogleOAuthUrl();
-    window.location.href = authUrl;
+    try {
+      // Trigger NextAuth Google Sign In with drive.file scope and redirect to /dashboard
+      await signIn('google', { redirectTo: '/dashboard' });
+    } catch {
+      // Direct OAuth fallback URL if NextAuth endpoint is unconfigured
+      const authUrl = getGoogleOAuthUrl();
+      window.location.href = authUrl;
+    }
   };
 
   const handleSkip = useCallback(async () => {

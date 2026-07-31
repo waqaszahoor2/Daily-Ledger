@@ -1,6 +1,7 @@
 // ============================================================
 // DailyLedger — lib/gis/tokenClient.ts
-// Google OAuth 2.0 token client supporting both popup & redirect flows.
+// Google OAuth 2.0 token client supporting GIS popup, NextAuth session,
+// and direct OAuth redirect flows.
 // Tokens are kept ONLY in module memory — never written to
 // localStorage, sessionStorage, IndexedDB, or cookies.
 // ============================================================
@@ -60,19 +61,21 @@ export function getGoogleClientId(): string {
 // ─── Direct Google OAuth URL Builder ──────────────────────────────────────────
 
 /**
- * Builds the direct Google OAuth 2.0 Implicit Grant authorization URL.
- * Redirects back to /dashboard with #access_token=... in the URL fragment.
+ * Builds the direct Google OAuth 2.0 Implicit Grant authorization URL using
+ * the standard NextAuth callback URI registered in Google Cloud Console.
  */
 export function getGoogleOAuthUrl(customRedirectUri?: string): string {
   const clientId = getGoogleClientId();
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://daily-ledger-snowy.vercel.app';
-  const redirectUri = customRedirectUri || `${origin}/dashboard`;
+  
+  // Use registered callback URI matching Google Cloud Console credentials
+  const redirectUri = customRedirectUri || `${origin}/api/auth/callback/google`;
 
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'token',
-    scope: DRIVE_SCOPE,
+    scope: `openid email profile ${DRIVE_SCOPE}`,
     prompt: 'consent',
   });
 
@@ -110,7 +113,6 @@ export function loadGISScript(): Promise<void> {
 
 /**
  * Opens Google OAuth authorization for the Drive scope.
- * Uses native window popup or redirect URL so browser popup blockers do not block it.
  */
 export function connectDrive(): Promise<string> {
   const clientId = getGoogleClientId();
@@ -123,7 +125,6 @@ export function connectDrive(): Promise<string> {
     );
   }
 
-  // Try GIS token client if script is loaded
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const google = typeof window !== 'undefined' ? (window as any).google : null;
   if (google?.accounts?.oauth2) {
@@ -153,37 +154,10 @@ export function connectDrive(): Promise<string> {
     });
   }
 
-  // Direct fallback: open Google OAuth in window
+  // Direct fallback: open Google OAuth URL using registered callback URI
   const authUrl = getGoogleOAuthUrl();
-  const width = 600;
-  const height = 700;
-  const left = window.screenX + (window.outerWidth - width) / 2;
-  const top = window.screenY + (window.outerHeight - height) / 2;
-  const popup = window.open(
-    authUrl,
-    'GoogleDriveAuth',
-    `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no,location=yes`
-  );
-
-  if (!popup) {
-    // If popups are completely disabled in browser settings, redirect current window
-    window.location.href = authUrl;
-    return new Promise(() => {}); // never resolves because page navigates
-  }
-
-  return new Promise((resolve, reject) => {
-    const timer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(timer);
-        const token = getAccessToken();
-        if (token) {
-          resolve(token);
-        } else {
-          reject(new Error('Authorization popup closed without completing authentication.'));
-        }
-      }
-    }, 500);
-  });
+  window.location.href = authUrl;
+  return new Promise(() => {}); // page navigates to Google
 }
 
 // ─── Revoke Token ─────────────────────────────────────────────────────────────

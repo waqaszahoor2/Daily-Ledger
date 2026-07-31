@@ -4,7 +4,7 @@
 // DailyLedger — app/dashboard/layout.tsx
 // Dashboard shell: sidebar nav, mobile drawer, topbar.
 // Local-first application — works fully without an account.
-// Handles URL OAuth fragment redirect callback for Google Drive.
+// Handles URL OAuth fragment redirect callback and NextAuth session tokens.
 // ============================================================
 
 import { useEffect, useSyncExternalStore } from 'react';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
+import { useSession } from 'next-auth/react';
 import { GoogleDrivePopup } from '@/components/auth/GoogleDrivePopup';
 import { useAppStore } from '@/store/useAppStore';
 import { useDriveSync } from '@/hooks/useDriveSync';
@@ -40,6 +41,7 @@ const getServerSnapshot = () => false;
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { data: session } = useSession();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const setShowDrivePopup = useAppStore((s) => s.setShowDrivePopup);
@@ -49,8 +51,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 
+  // Sync NextAuth session token into memory store
   useEffect(() => {
-    // 1. Check for Google OAuth hash fragment redirect callback (#access_token=...)
+    if (session?.accessToken) {
+      setAccessToken(session.accessToken, 3600, session.user?.email || '');
+      if (!settings.driveConfig.connected) {
+        getOrCreateDriveFolder(session.accessToken).then(async (folderId) => {
+          const driveCfg = {
+            connected: true,
+            folderId,
+            folderName: DRIVE_FOLDER_NAME,
+          };
+          setSettings({ driveConfig: driveCfg, driveSkipped: false });
+          await setSetting('driveConfig', driveCfg);
+          await setSetting('driveSkipped', false);
+          toast.success(`Google Drive connected! Backup folder: ${DRIVE_FOLDER_NAME}`);
+        }).catch(() => {});
+      }
+    }
+  }, [session, setSettings, settings.driveConfig.connected]);
+
+  useEffect(() => {
+    // Check for Google OAuth hash fragment redirect callback (#access_token=...)
     if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
@@ -80,7 +102,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     }
 
-    // 2. Run one-time DB migration and load settings
+    // Run one-time DB migration and load settings
     runMigrationIfNeeded()
       .then(() => getAppSettings())
       .then((s) => setSettings(s))
@@ -88,7 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [setSettings]);
 
   const hasToken = isTokenValid();
-  const tokenEmail = getTokenEmail();
+  const tokenEmail = getTokenEmail() || session?.user?.email || '';
 
   const displayUser = {
     name: tokenEmail ? tokenEmail.split('@')[0] : 'Local Ledger',
