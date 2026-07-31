@@ -1,7 +1,6 @@
 // ============================================================
 // DailyLedger — lib/gis/tokenClient.ts
-// Google OAuth 2.0 token client supporting GIS popup, NextAuth session,
-// and direct OAuth redirect flows.
+// Google Identity Services (GIS) OAuth 2.0 token client.
 // Tokens are kept ONLY in module memory — never written to
 // localStorage, sessionStorage, IndexedDB, or cookies.
 // ============================================================
@@ -58,30 +57,6 @@ export function getGoogleClientId(): string {
   return '913422447403-ken4krrgfcbtvului82g2ehqsbvem71u.apps.googleusercontent.com';
 }
 
-// ─── Direct Google OAuth URL Builder ──────────────────────────────────────────
-
-/**
- * Builds the direct Google OAuth 2.0 Implicit Grant authorization URL using
- * the standard NextAuth callback URI registered in Google Cloud Console.
- */
-export function getGoogleOAuthUrl(customRedirectUri?: string): string {
-  const clientId = getGoogleClientId();
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://daily-ledger-snowy.vercel.app';
-  
-  // Use registered callback URI matching Google Cloud Console credentials
-  const redirectUri = customRedirectUri || `${origin}/api/auth/callback/google`;
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'token',
-    scope: `openid email profile ${DRIVE_SCOPE}`,
-    prompt: 'consent',
-  });
-
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-}
-
 // ─── GIS script loader ────────────────────────────────────────────────────────
 
 let _scriptLoaded = false;
@@ -109,10 +84,51 @@ export function loadGISScript(): Promise<void> {
   });
 }
 
-// ─── Connect Google Drive (GIS Popup with Fallback) ───────────────────────────
+// ─── Connect Google Drive (GIS Token Client Popup) ────────────────────────────
+
+let _gisTokenClient: { requestAccessToken: (overrideConfig?: { prompt?: string }) => void } | null = null;
 
 /**
- * Opens Google OAuth authorization for the Drive scope.
+ * Initializes GIS Token Client. Can be called on page/component mount.
+ */
+export function initGISTokenClient(onSuccess: (token: string, email?: string) => void, onError: (err: Error) => void): boolean {
+  const clientId = getGoogleClientId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const google = typeof window !== 'undefined' ? (window as any).google : null;
+
+  if (!google?.accounts?.oauth2) return false;
+
+  try {
+    _gisTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: DRIVE_SCOPE,
+      callback: (response: { access_token?: string; error?: string; expires_in?: number; email?: string }) => {
+        if (response.error || !response.access_token) {
+          onError(new Error(response.error ?? 'Authorization was denied or cancelled'));
+          return;
+        }
+        const expiresIn = response.expires_in ?? 3600;
+        setAccessToken(response.access_token, expiresIn, response.email ?? '');
+        onSuccess(response.access_token, response.email);
+      },
+      error_callback: (err: { type: string; message?: string }) => {
+        if (err.type === 'popup_closed') {
+          onError(new Error('Authorization cancelled: the popup was closed'));
+        } else {
+          onError(new Error(err.message ?? 'Google authorization failed'));
+        }
+      },
+    });
+    return true;
+  } catch (err) {
+    console.error('Failed to init GIS token client:', err);
+    return false;
+  }
+}
+
+/**
+ * Opens Google OAuth token authorization popup via GIS.
+ * Requires zero redirect_uri parameter, eliminating redirect_uri_mismatch error.
  */
 export function connectDrive(): Promise<string> {
   const clientId = getGoogleClientId();
@@ -127,37 +143,37 @@ export function connectDrive(): Promise<string> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const google = typeof window !== 'undefined' ? (window as any).google : null;
-  if (google?.accounts?.oauth2) {
-    return new Promise((resolve, reject) => {
-      const tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: DRIVE_SCOPE,
-        callback: (response: { access_token?: string; error?: string; expires_in?: number; email?: string }) => {
-          if (response.error || !response.access_token) {
-            reject(new Error(response.error ?? 'Authorization was denied or cancelled'));
-            return;
-          }
-          const expiresIn = response.expires_in ?? 3600;
-          setAccessToken(response.access_token, expiresIn, response.email ?? '');
-          resolve(response.access_token);
-        },
-        error_callback: (err: { type: string; message?: string }) => {
-          if (err.type === 'popup_closed') {
-            reject(new Error('Authorization cancelled: the popup was closed'));
-          } else {
-            reject(new Error(err.message ?? 'Google authorization failed'));
-          }
-        },
-      });
-
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-    });
+  if (!google?.accounts?.oauth2) {
+    loadGISScript().catch(() => {});
+    return Promise.reject(
+      new Error('Google Identity Services script is loading. Please click Connect again.')
+    );
   }
 
-  // Direct fallback: open Google OAuth URL using registered callback URI
-  const authUrl = getGoogleOAuthUrl();
-  window.location.href = authUrl;
-  return new Promise(() => {}); // page navigates to Google
+  return new Promise((resolve, reject) => {
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: DRIVE_SCOPE,
+      callback: (response: { access_token?: string; error?: string; expires_in?: number; email?: string }) => {
+        if (response.error || !response.access_token) {
+          reject(new Error(response.error ?? 'Authorization was denied or cancelled'));
+          return;
+        }
+        const expiresIn = response.expires_in ?? 3600;
+        setAccessToken(response.access_token, expiresIn, response.email ?? '');
+        resolve(response.access_token);
+      },
+      error_callback: (err: { type: string; message?: string }) => {
+        if (err.type === 'popup_closed') {
+          reject(new Error('Authorization cancelled: the popup was closed'));
+        } else {
+          reject(new Error(err.message ?? 'Google authorization failed'));
+        }
+      },
+    });
+
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  });
 }
 
 // ─── Revoke Token ─────────────────────────────────────────────────────────────

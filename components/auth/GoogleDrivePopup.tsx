@@ -1,18 +1,18 @@
 // ============================================================
 // DailyLedger — components/auth/GoogleDrivePopup.tsx
-// Direct Google OAuth Connection for Google Drive backups.
-// Uses NextAuth Google provider matching Google Cloud Console callback URI.
+// Real Google Drive connection via Google Identity Services (GIS).
+// Uses memory-only token storage and creates/locates DailyLedger_Backups.
 // ============================================================
 
 'use client';
 
 import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { signIn } from 'next-auth/react';
+import { Cloud, Shield, Smartphone, Lock, HardDrive, X, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { setSetting } from '@/lib/db/dexie';
-import { isTokenValid, getGoogleClientId, getGoogleOAuthUrl } from '@/lib/gis/tokenClient';
+import { getOrCreateDriveFolder, DRIVE_FOLDER_NAME } from '@/lib/drive/drive';
+import { connectDrive, isTokenValid, getGoogleClientId, loadGISScript } from '@/lib/gis/tokenClient';
 import { toast } from 'sonner';
 
 const benefits = [
@@ -28,13 +28,20 @@ export function GoogleDrivePopup() {
   const setShow = useAppStore((s) => s.setShowDrivePopup);
   const setSettings = useAppStore((s) => s.setSettings);
 
+  const [connecting, setConnecting] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
 
+  // Preload GIS script when popup opens
+  useEffect(() => {
+    if (show) {
+      loadGISScript().catch(() => {});
+    }
+  }, [show]);
+
   /**
-   * Primary connection handler: triggers Google OAuth via NextAuth / Direct OAuth
-   * matching registered callback URI https://daily-ledger-snowy.vercel.app/api/auth/callback/google
+   * Connection handler: triggers GIS token authorization popup.
    */
-  const handleConnect = async () => {
+  const handleConnect = () => {
     setConfigError(null);
 
     const clientId = getGoogleClientId();
@@ -45,14 +52,33 @@ export function GoogleDrivePopup() {
       return;
     }
 
-    try {
-      // Trigger NextAuth Google Sign In with drive.file scope and redirect to /dashboard
-      await signIn('google', { redirectTo: '/dashboard' });
-    } catch {
-      // Direct OAuth fallback URL if NextAuth endpoint is unconfigured
-      const authUrl = getGoogleOAuthUrl();
-      window.location.href = authUrl;
-    }
+    setConnecting(true);
+
+    connectDrive()
+      .then(async (accessToken) => {
+        const folderId = await getOrCreateDriveFolder(accessToken);
+        const driveCfg = {
+          connected: true,
+          folderId,
+          folderName: DRIVE_FOLDER_NAME,
+        };
+
+        setSettings({ driveConfig: driveCfg, driveSkipped: false });
+        await setSetting('driveConfig', driveCfg);
+        await setSetting('driveSkipped', false);
+
+        toast.success(`Google Drive connected! Backup folder: ${DRIVE_FOLDER_NAME}`);
+        setShow(false);
+      })
+      .catch((err) => {
+        console.error('Drive connect error:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        setConfigError(message);
+        toast.error(`Drive connection failed: ${message}`);
+      })
+      .finally(() => {
+        setConnecting(false);
+      });
   };
 
   const handleSkip = useCallback(async () => {
@@ -159,12 +185,22 @@ export function GoogleDrivePopup() {
             <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 pt-1">
               <button
                 onClick={handleConnect}
-                className="btn-primary flex-1 py-3 text-xs sm:text-sm cursor-pointer"
+                disabled={connecting}
+                className="btn-primary flex-1 py-3 text-xs sm:text-sm disabled:opacity-60 cursor-pointer"
               >
-                <Cloud className="w-4 h-4" />
-                Connect Google Drive
+                {connecting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Connecting to Google Drive…
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-4 h-4" />
+                    Connect Google Drive
+                  </>
+                )}
               </button>
-              <button onClick={handleSkip} className="btn-secondary flex-1 py-3 text-xs sm:text-sm cursor-pointer">
+              <button onClick={handleSkip} disabled={connecting} className="btn-secondary flex-1 py-3 text-xs sm:text-sm cursor-pointer">
                 Start Using DailyLedger
               </button>
             </div>
