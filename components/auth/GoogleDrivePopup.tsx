@@ -1,7 +1,7 @@
 // ============================================================
 // DailyLedger — components/auth/GoogleDrivePopup.tsx
 // Real Google Drive connection via Google Identity Services (GIS)
-// or Direct Google OAuth Redirect.
+// or Direct Google OAuth Redirect. Seamless auto-fallback.
 // ============================================================
 
 'use client';
@@ -39,7 +39,17 @@ export function GoogleDrivePopup() {
   }, [show]);
 
   /**
-   * Primary connection handler: opens popup window for Google OAuth.
+   * Direct redirect fallback: navigates current page to Google OAuth consent screen.
+   * Completely bypasses all browser popup blockers.
+   */
+  const handleDirectRedirect = useCallback(() => {
+    const authUrl = getGoogleOAuthUrl();
+    window.location.href = authUrl;
+  }, []);
+
+  /**
+   * Primary connection handler: attempts popup window first.
+   * If popup is blocked by browser policies, auto-falls back to page redirect.
    */
   const handleConnect = () => {
     setConfigError(null);
@@ -73,21 +83,20 @@ export function GoogleDrivePopup() {
       .catch((err) => {
         console.error('Drive connect error:', err);
         const message = err instanceof Error ? err.message : String(err);
+
+        if (message.toLowerCase().includes('popup') || message.toLowerCase().includes('blocked')) {
+          // Popup blocked — automatically transition to direct page redirect
+          toast.info('Opening Google authorization page...');
+          handleDirectRedirect();
+          return;
+        }
+
         setConfigError(message);
         toast.error(`Drive connection failed: ${message}`);
       })
       .finally(() => {
         setConnecting(false);
       });
-  };
-
-  /**
-   * Direct redirect fallback: navigates current page to Google OAuth consent screen.
-   * Completely bypasses all browser popup blockers.
-   */
-  const handleDirectRedirect = () => {
-    const authUrl = getGoogleOAuthUrl();
-    window.location.href = authUrl;
   };
 
   const handleSkip = useCallback(async () => {
@@ -228,7 +237,7 @@ export function GoogleDrivePopup() {
                 disabled={connecting}
                 className="text-xs text-muted hover:text-primary flex items-center justify-center gap-1 py-1 font-medium underline cursor-pointer"
               >
-                <ExternalLink className="w-3 h-3" /> Having popup trouble? Authorize via page redirect
+                <ExternalLink className="w-3 h-3" /> Authorize via direct page redirect
               </button>
             </div>
           </motion.div>
